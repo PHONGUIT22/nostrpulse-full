@@ -444,7 +444,7 @@ export default function MachineSpenderBot() {
                           }
 
                           // --------------------------------------------------
-                          // PART: EXECUTE_NUTZAP TOOL (STYLE HỆT LIGHTNINGZAPCARD)
+                          // PART: EXECUTE_NUTZAP TOOL (MATCHING LIGHTNINGZAPCARD STYLE)
                           // --------------------------------------------------
                           const isNutzapTool =
                             part.type === "tool-execute_nutzap" ||
