@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Search, Key, Scale, Loader2, Zap } from "lucide-react";
+import { Search, Key, Scale, Loader2, Zap, Bot } from "lucide-react";
 import { resolveNostrSearch } from "@/lib/search";
 import NostrLoginButton from "@/components/layout/NostrLoginButton";
 
@@ -65,6 +65,10 @@ export default function Navbar() {
         {/* LINKS GÓC PHẢI & NÚT LOGIN NIP-07 */}
         <div className="flex items-center gap-3 shrink-0">
           <nav className="hidden lg:flex items-center gap-6 font-medium text-slate-600 text-sm mr-2">
+            <Link href="/agent" className="hover:text-emerald-600 text-emerald-700 font-bold transition-colors flex items-center gap-1.5">
+              <Bot className="w-3.5 h-3.5 text-emerald-600" />
+              Machine Money
+            </Link>
             <Link href="/relays" className="hover:text-slate-900 transition-colors">
               Relay Explorer
             </Link>
@@ -72,6 +76,14 @@ export default function Navbar() {
               Methodology
             </Link>
           </nav>
+
+          <Link
+            href="/agent"
+            className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-full transition-all text-xs sm:text-sm border border-emerald-200 shadow-xs flex items-center gap-1.5"
+          >
+            <Bot className="w-4 h-4 text-emerald-600" />
+            <span className="hidden sm:inline">AI Agent</span>
+          </Link>
 
           <Link
             href="/compare"
