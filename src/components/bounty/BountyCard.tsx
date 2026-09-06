@@ -7,8 +7,10 @@ import { Zap, Clock, ShieldCheck, ExternalLink, User, Check, Copy } from "lucide
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import UserAvatar from "@/components/ui/UserAvatar";
 import TrustScoreBadge from "@/components/detail/TrustScoreBadge";
+import TaskResultView from "@/components/bounty/TaskResultView";
 import { OpenBountyTask } from "@/lib/nip90";
 import { fetchNostrProfile, calculateTrustScore, TrustScoreResult, NostrProfile } from "@/lib/trust-score";
 import { nip19 } from "nostr-tools";
@@ -24,6 +26,7 @@ export default function BountyCard({ task, cachedProfile, cachedTrustScore }: Bo
   const [trustScore, setTrustScore] = useState<TrustScoreResult | null>(cachedTrustScore || null);
   const [isLoadingScore, setIsLoadingScore] = useState(!cachedTrustScore);
   const [copiedId, setCopiedId] = useState(false);
+  const [isResultModalOpen, setIsResultModalOpen] = useState(false);
 
   // Encode pubkey to npub for display and routing
   let npub = "";
@@ -199,13 +202,29 @@ export default function BountyCard({ task, cachedProfile, cachedTrustScore }: Bo
 
           <Button
             size="sm"
-            onClick={handleCopyJobId}
-            className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs"
+            onClick={() => setIsResultModalOpen(true)}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs flex items-center gap-1.5"
           >
-            Take Task
+            <Zap className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+            <span>Review &amp; Pay</span>
           </Button>
         </div>
       </CardFooter>
+
+      {/* Task Delivery & 1-Tap Cashu Settlement Modal */}
+      {isResultModalOpen && (
+        <Dialog open={isResultModalOpen} onOpenChange={setIsResultModalOpen}>
+          <DialogContent className="sm:max-w-2xl bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <TaskResultView
+              jobId={task.id}
+              demandedAmountSats={task.bidSats > 0 ? task.bidSats : 5}
+              taskPrompt={task.prompt}
+              workerPubkey={task.pubkey}
+              onClose={() => setIsResultModalOpen(false)}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
     </Card>
   );
 }
