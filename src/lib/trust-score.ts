@@ -3,6 +3,7 @@ import { NostrProfile, fetchNostrProfile, DEFAULT_RELAYS } from "@/lib/nostr";
 import { Nip05Result } from "@/lib/nip05";
 
 export { fetchNostrProfile, DEFAULT_RELAYS };
+export type { NostrProfile };
 
 export interface TrustScoreBreakdownItem {
   label: string;

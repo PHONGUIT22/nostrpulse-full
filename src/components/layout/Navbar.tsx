@@ -72,6 +72,9 @@ export default function Navbar() {
             <Link href="/relays" className="hover:text-slate-900 transition-colors">
               Relay Explorer
             </Link>
+            <Link href="/bounties" className="hover:text-slate-900 transition-colors">
+              Bounties
+            </Link>
             <Link href="/about" className="hover:text-slate-900 transition-colors">
               Methodology
             </Link>
