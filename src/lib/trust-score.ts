@@ -1,6 +1,8 @@
 // src/lib/trust-score.ts
-import { NostrProfile } from "@/lib/nostr";
+import { NostrProfile, fetchNostrProfile, DEFAULT_RELAYS } from "@/lib/nostr";
 import { Nip05Result } from "@/lib/nip05";
+
+export { fetchNostrProfile, DEFAULT_RELAYS };
 
 export interface TrustScoreBreakdownItem {
   label: string;
