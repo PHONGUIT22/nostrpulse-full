@@ -7,7 +7,7 @@ import {
   fetchRecentNotes 
 } from "@/lib/nostr";
 import { verifyNip05 } from "@/lib/nip05";
-import { calculateTrustScore } from "@/lib/trust-score";
+import { calculateTrustScore, calculateTrustScoreAsync } from "@/lib/trust-score";
 import LightningZapCard from "@/components/detail/LightningZapCard";
 import TrustScoreCard from "@/components/detail/TrustScoreCard";
 import TrustScoreBadge from "@/components/detail/TrustScoreBadge";
@@ -86,8 +86,8 @@ export default async function CreatorProfilePage({ params }: PageProps) {
   // 1. Cryptographic NIP-05 DNS verification
   const nip05Result = await verifyNip05(profile.nip05, profile.pubkey);
 
-  // 2. Calculate Trust Score from verified data
-  const trustData = calculateTrustScore(profile, nip05Result);
+  // 2. Calculate Trust Score with multi-hop WoT resolution
+  const trustData = await calculateTrustScoreAsync(profile, nip05Result);
   
   return (
     <div className="min-h-screen bg-[#FDFDFD] text-slate-900 pb-20">
