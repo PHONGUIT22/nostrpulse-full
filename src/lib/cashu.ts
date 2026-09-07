@@ -1,5 +1,5 @@
 // src/lib/cashu.ts
-import { getEncodedToken, Wallet } from "@cashu/cashu-ts";
+import { getDecodedToken, getEncodedToken, Wallet } from "@cashu/cashu-ts";
 import { finalizeEvent, generateSecretKey } from "nostr-tools/pure";
 import { SimplePool } from "nostr-tools/pool";
 import { nip19, nip04, nip44 } from "nostr-tools";
@@ -14,25 +14,25 @@ export interface CashuMintOption {
 // List of official trusted Cashu Mints
 export const RECOMMENDED_MINTS: CashuMintOption[] = [
   {
+    name: "Cashu Testnut (Demo / Test Sats)",
+    url: "https://testnut.cashu.space",
+    description: "Official Cashu core testnet mint (Recommended for live demos)",
+    recommended: true,
+  },
+  {
     name: "Minibits Mint",
     url: "https://mint.minibits.cash/Bitcoin",
     description: "High-uptime trusted node with instant Lightning routing",
-    recommended: true,
   },
   {
     name: "Macadamia Mint",
     url: "https://mint.macadamia.cash",
     description: "Reliable community-driven mint with high uptime",
   },
-  {
-    name: "Cashu Testnut (Demo / Test Sats)",
-    url: "https://testnut.cashu.space",
-    description: "Official Cashu core testnet mint (Recommended for live demos)",
-  },
 ];
 
-// Default Mint (Minibits)
-export const DEFAULT_CASHU_MINT = RECOMMENDED_MINTS[0].url;
+// Default Mint (Testnut)
+export const DEFAULT_CASHU_MINT = "https://testnut.cashu.space";
 
 const RELAYS = [
   "wss://relay.primal.net",
@@ -263,67 +263,93 @@ export function parseCashuToken(tokenString: string): DecodedCashuInfo {
     throw new Error("Invalid token format. Cashu tokens must start with 'cashuA' or 'cashuB'.");
   }
 
-  const decoded = decodeCashuString(trimmed);
-  if (!decoded) {
-    throw new Error("Could not decode Cashu token payload.");
-  }
-
-  let mint = DEFAULT_CASHU_MINT;
+  let mint = "";
   let proofs: CashuProof[] = [];
-  let unit = decoded.unit || decoded.u || "sat";
+  let unit = "sat";
 
-  // NUT-00 V4 CBOR structure (m, u, t -> i, p -> a, s, c)
-  if (Array.isArray(decoded.t)) {
-    mint = decoded.m || DEFAULT_CASHU_MINT;
-    for (const group of decoded.t) {
-      let keysetIdHex = "";
-      if (group.i instanceof Uint8Array) {
-        keysetIdHex = bytesToHex(group.i);
-      } else if (typeof group.i === "string") {
-        keysetIdHex = group.i;
-      } else if (group.i) {
-        keysetIdHex = String(group.i);
-      }
-
-      if (Array.isArray(group.p)) {
-        for (const p of group.p) {
-          let cHex = "";
-          if (p.c instanceof Uint8Array) {
-            cHex = bytesToHex(p.c);
-          } else if (typeof p.c === "string") {
-            cHex = p.c;
-          } else if (p.C) {
-            cHex = p.C instanceof Uint8Array ? bytesToHex(p.C) : String(p.C);
-          }
-
-          proofs.push({
-            id: keysetIdHex,
-            amount: Number(p.a || p.amount || 0),
-            secret: String(p.s || p.secret || ""),
-            C: cHex,
-          });
-        }
-      }
+  // 1. Primary: Use official @cashu/cashu-ts decoder
+  try {
+    let decoded: any = null;
+    try {
+      decoded = (getDecodedToken as any)(trimmed, []);
+    } catch {
+      decoded = (getDecodedToken as any)(trimmed);
     }
+
+    if (decoded) {
+      if (decoded.mint) {
+        mint = decoded.mint;
+      } else if (Array.isArray(decoded.token) && decoded.token.length > 0) {
+        mint = decoded.token[0].mint;
+      }
+
+      if (Array.isArray(decoded.proofs)) {
+        proofs = decoded.proofs.map((p: any) => ({
+          ...p,
+          amount: typeof p.amount?.toNumber === "function" ? p.amount.toNumber() : Number(p.amount || 0),
+        }));
+      } else if (Array.isArray(decoded.token) && decoded.token.length > 0) {
+        proofs = decoded.token.flatMap((t: any) =>
+          (t.proofs || []).map((p: any) => ({
+            ...p,
+            amount: typeof p.amount?.toNumber === "function" ? p.amount.toNumber() : Number(p.amount || 0),
+          }))
+        );
+      }
+
+      if (decoded.unit) unit = decoded.unit;
+    }
+  } catch (decErr) {
+    console.debug("[Cashu] getDecodedToken fallback to manual parsing:", decErr);
   }
-  // NUT-00 V4 standard object structure
-  else if (Array.isArray(decoded.proofs)) {
-    mint = decoded.mint || DEFAULT_CASHU_MINT;
-    proofs = decoded.proofs;
-  }
-  // Legacy V3 token payload structure
-  else if (Array.isArray(decoded.token) && decoded.token.length > 0) {
-    mint = decoded.token[0].mint || DEFAULT_CASHU_MINT;
-    for (const entry of decoded.token) {
-      if (entry.unit) unit = entry.unit;
-      if (Array.isArray(entry.proofs)) {
-        proofs.push(...entry.proofs);
+
+  // 2. Fallback: decodeCashuString only if official decoder yields no proofs
+  if (proofs.length === 0) {
+    const decoded = decodeCashuString(trimmed);
+    if (decoded) {
+      if (Array.isArray(decoded.t)) {
+        mint = decoded.m || mint;
+        for (const group of decoded.t) {
+          const keysetIdHex = group.i instanceof Uint8Array ? bytesToHex(group.i) : String(group.i || "");
+          if (Array.isArray(group.p)) {
+            for (const p of group.p) {
+              const cHex = p.c instanceof Uint8Array ? bytesToHex(p.c) : String(p.c || p.C || "");
+              proofs.push({
+                id: keysetIdHex,
+                amount: Number(p.a || p.amount || 0),
+                secret: String(p.s || p.secret || ""),
+                C: cHex,
+              });
+            }
+          }
+        }
+      } else if (Array.isArray(decoded.proofs)) {
+        mint = decoded.mint || mint;
+        proofs = decoded.proofs;
+      } else if (Array.isArray(decoded.token) && decoded.token.length > 0) {
+        mint = decoded.token[0].mint || mint;
+        for (const entry of decoded.token) {
+          if (entry.unit) unit = entry.unit;
+          if (Array.isArray(entry.proofs)) proofs.push(...entry.proofs);
+        }
       }
     }
   }
 
   if (proofs.length === 0) {
     throw new Error("No cryptographic proofs found inside the token.");
+  }
+
+  unit = (unit || "sat").toLowerCase().trim();
+
+  // Sanitize Mint URL
+  if (mint) {
+    mint = mint.trim().replace(/\/+$/, "");
+    if (!mint.startsWith("http://") && !mint.startsWith("https://")) {
+      mint = `https://${mint}`;
+    }
+  } else {
+    mint = DEFAULT_CASHU_MINT;
   }
 
   const totalAmountSats = proofs.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
@@ -341,7 +367,8 @@ export function parseCashuToken(tokenString: string): DecodedCashuInfo {
  */
 export async function splitCashuToken(
   tokenString: string,
-  amountToSend: number
+  amountToSend: number,
+  overrideMintUrl?: string
 ): Promise<{ sendToken: string; changeToken: string | null }> {
   const info = parseCashuToken(tokenString);
   if (info.totalAmountSats < amountToSend) {
@@ -351,20 +378,75 @@ export async function splitCashuToken(
     return { sendToken: tokenString, changeToken: null };
   }
 
-  const cleanMint = info.mint.trim().replace(/\/+$/, "");
-  const wallet = new Wallet(cleanMint);
-  await wallet.loadMint().catch((e) => console.debug("[Cashu] loadMint warning:", e));
+  const normalizedUnit = (info.unit || "sat").toLowerCase().trim();
+  let targetMint = info.mint || overrideMintUrl || DEFAULT_CASHU_MINT;
+  let cleanMint = targetMint.trim().replace(/\/+$/, "");
+  if (!cleanMint.startsWith("http://") && !cleanMint.startsWith("https://")) {
+    cleanMint = `https://${cleanMint}`;
+  }
 
-  // Split proofs into exact send amount and change proofs
-  const sendResult: any = await wallet.send(amountToSend, info.proofs as any);
-  const returnChange = sendResult.keep || sendResult.returnChange;
-  const send = sendResult.send;
-  const sendToken = encodeCashuToken(cleanMint, send, info.unit);
-  const changeToken = returnChange && returnChange.length > 0 
-    ? encodeCashuToken(cleanMint, returnChange, info.unit) 
-    : null;
+  console.log(`[splitCashuToken] Connecting to Mint: "${cleanMint}", Unit: "${normalizedUnit}"`);
 
-  return { sendToken, changeToken };
+  const wallet = new Wallet(cleanMint, { unit: normalizedUnit });
+  await wallet.loadMint(true);
+
+  // 1. Fetch complete list of Keyset IDs from Mint
+  let mintKeysetIds: string[] = [];
+  try {
+    const res = await fetch(`${cleanMint}/v1/keysets`);
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.keysets)) {
+        mintKeysetIds = data.keysets.map((k: any) => k.id);
+      }
+    }
+  } catch (err) {
+    console.warn("[splitCashuToken] Could not fetch keysets directly, falling back to cache:", err);
+    mintKeysetIds = (wallet as any).keyChain?.cache?.keysets?.map((k: any) => k.id) || [];
+  }
+
+  console.log(`[splitCashuToken] Full Mint Keysets available:`, mintKeysetIds);
+
+  // 2. Auto-expand if proof.id is truncated to 16 hex chars (NUT-00 CBOR prefix)
+  const normalizedProofs = info.proofs.map((proof: any) => {
+    const rawId = String(proof.id);
+    const fullMatch = mintKeysetIds.find((fullId) => fullId === rawId || fullId.startsWith(rawId));
+    if (fullMatch && fullMatch !== rawId) {
+      console.log(`[splitCashuToken] Auto-expanded truncated keyset: ${rawId} -> ${fullMatch}`);
+      return { ...proof, id: fullMatch };
+    }
+    return proof;
+  });
+
+  try {
+    // 3. Ensure keyset has loaded keys
+    if (typeof (wallet as any).ensureOperableKeysets === "function") {
+      const keysetIds = Array.from(new Set(normalizedProofs.map((p: any) => p.id)));
+      await (wallet as any).ensureOperableKeysets(keysetIds);
+    }
+
+    let sendResult: any;
+    if ((wallet as any).ops && typeof (wallet as any).ops.send === "function") {
+      sendResult = await (wallet as any).ops.send(amountToSend, normalizedProofs).run();
+    } else {
+      sendResult = await wallet.send(amountToSend, normalizedProofs as any);
+    }
+
+    const returnChange = sendResult.keep || sendResult.returnChange;
+    const send = sendResult.send;
+    const sendToken = encodeCashuToken(cleanMint, send, normalizedUnit);
+    const changeToken = returnChange && returnChange.length > 0 
+      ? encodeCashuToken(cleanMint, returnChange, normalizedUnit) 
+      : null;
+
+    return { sendToken, changeToken };
+  } catch (error: any) {
+    if (error.name === "UnknownKeysetError" || (error.message && error.message.includes("not a keyset of this mint"))) {
+      console.error(`[splitCashuToken] Keyset Error: Token does not belong to Mint ${cleanMint}`);
+      throw new Error(`Token eCash không hợp lệ hoặc không thuộc về Mint hiện tại (${cleanMint}). Vui lòng kiểm tra lại token.`);
+    }
+    throw error;
+  }
 }
 
 /**
@@ -378,7 +460,7 @@ export async function verifyTokenWithMint(tokenString: string): Promise<{ isVali
     // Initiate verification check with Mint
     const verifyPromise = (async () => {
       try {
-        const wallet = new Wallet(cleanMint);
+        const wallet = new Wallet(cleanMint, { unit: info.unit });
 
         if (typeof (wallet as any).loadMint === "function") {
           try {
@@ -629,11 +711,14 @@ export async function sendCashuNutZap({
     throw new Error("Invalid recipient pubkey format.");
   }
 
-  const cleanMint = (mintUrl || DEFAULT_CASHU_MINT).trim().replace(/\/+$/, "");
+  let cleanMint = (mintUrl || DEFAULT_CASHU_MINT).trim().replace(/\/+$/, "");
+  if (!cleanMint.startsWith("http://") && !cleanMint.startsWith("https://")) {
+    cleanMint = `https://${cleanMint}`;
+  }
   const ephemeralSk = generateSecretKey();
 
   // Split Cashu token into exact send amount and change token
-  const { sendToken, changeToken } = await splitCashuToken(cashuToken, amountSats);
+  const { sendToken, changeToken } = await splitCashuToken(cashuToken, amountSats, cleanMint);
 
   const secretNutZapPayload = JSON.stringify({
     token: sendToken.trim(),
