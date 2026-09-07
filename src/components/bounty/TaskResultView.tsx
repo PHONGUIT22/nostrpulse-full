@@ -445,7 +445,7 @@ export default function TaskResultView({
 
             <div className="flex items-center gap-1 text-emerald-400 font-bold text-xs">
               <CheckCircle2 className="w-4 h-4 fill-emerald-400 text-slate-900" />
-              <span>Paid Instant</span>
+              <span>Instant Settlement</span>
             </div>
           </div>
 
@@ -462,7 +462,7 @@ export default function TaskResultView({
               {settledTx.changeToken && (
                 <div className="text-[11px] text-emerald-300 font-mono mt-1 font-semibold flex items-center gap-1">
                   <span>🪙</span>
-                  <span>Change refunded and retained in your session</span>
+                  <span>Change proofs retained in session</span>
                 </div>
               )}
             </div>
