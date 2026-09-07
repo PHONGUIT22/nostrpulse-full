@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
+import ClientErrorListener from "@/components/layout/ClientErrorListener";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -97,8 +98,31 @@ export default function RootLayout({
             })
           }}
         />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if (typeof window !== 'undefined') {
+                window.addEventListener('unhandledrejection', function(event) {
+                  var r = event.reason;
+                  var msg = typeof r === 'string' ? r : (r && r.message ? r.message : String(r || ''));
+                  if (
+                    msg.includes('connection failure') ||
+                    msg.includes('connection timed out') ||
+                    msg.includes('failed to connect to relay') ||
+                    msg.includes('WebSocket') ||
+                    msg.includes('relay.') ||
+                    msg.includes('nos.lol')
+                  ) {
+                    event.preventDefault();
+                  }
+                }, { capture: true });
+              }
+            `,
+          }}
+        />
       </head>
       <body className={`${inter.className} bg-[#FDFDFD] text-slate-900 antialiased flex flex-col min-h-screen`}>
+        <ClientErrorListener />
         <Navbar />
         <main className="flex-1">{children}</main>
         <Footer />

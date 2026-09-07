@@ -1,7 +1,6 @@
 import { SimplePool, generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools';
 
-// 1. Khởi tạo Relay và Pool kết nối
-const RELAYS = ['wss://relay.damus.io'];
+const RELAYS = ['wss://relay.primal.net', 'wss://nos.lol', 'wss://relay.nostr.band'];
 const pool = new SimplePool();
 
 async function runTest() {

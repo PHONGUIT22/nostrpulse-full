@@ -34,9 +34,8 @@ const RAW_NPUBS = [
 ];
 
 const RELAYS = [
-  "wss://relay.damus.io",
-  "wss://nos.lol",
   "wss://relay.primal.net",
+  "wss://nos.lol",
   "wss://relay.nostr.band"
 ];
 
