@@ -443,7 +443,7 @@ export async function splitCashuToken(
   } catch (error: any) {
     if (error.name === "UnknownKeysetError" || (error.message && error.message.includes("not a keyset of this mint"))) {
       console.error(`[splitCashuToken] Keyset Error: Token does not belong to Mint ${cleanMint}`);
-      throw new Error(`Token eCash không hợp lệ hoặc không thuộc về Mint hiện tại (${cleanMint}). Vui lòng kiểm tra lại token.`);
+      throw new Error(`Invalid eCash token or keyset does not belong to active Mint (${cleanMint}). Please check your token.`);
     }
     throw error;
   }
