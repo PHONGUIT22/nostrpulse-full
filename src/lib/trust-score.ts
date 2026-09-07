@@ -199,44 +199,111 @@ export function calculateTrustScore(
   });
 
   // =========================================================================
-  // ANTI-SYBIL GUARD (Damping Factor)
+  // ANTI-SYBIL GATEKEEPER (Strict Social Distance & Damping Constraints)
   // =========================================================================
-  // Cap score at 44 if lacking both NIP-05 verification and WoT graph connectivity.
-  // Prevents spammers from gaming metadata scores.
   let finalScore = rawScore;
-  let isSybilDamped = false;
+  let isGatekeeperCapped = false;
+  let gatekeeperReason = "";
 
-  if (!isNip05Verified && wotPoints < 10) {
+  // 1. Distance >= 3 (Hop > 2 / Isolated Keypair): Hard ceiling of 25/100
+  if (resolvedWot.distance >= 3) {
+    if (finalScore > 25) {
+      finalScore = 25;
+      isGatekeeperCapped = true;
+      gatekeeperReason = "Sybil Gatekeeper: Isolated keypair outside trust graph (Hop > 2). Score hard-capped at 25/100.";
+    }
+  } 
+  // 2. Distance == 2 (Hop 2 / Transitive Trust): Hard ceiling of 50/100
+  else if (resolvedWot.distance === 2) {
+    if (finalScore > 50) {
+      finalScore = 50;
+      isGatekeeperCapped = true;
+      gatekeeperReason = "Sybil Gatekeeper: Hop 2 transitive trust cannot exceed Active Contributor. Score hard-capped at 50/100.";
+    }
+  }
+  // 3. Distance <= 1 (Hop 0 or Hop 1): Standard damping if lacking both NIP-05 and sufficient WoT connectivity
+  else if (!isNip05Verified && wotPoints < 10) {
     if (finalScore >= 45) {
       finalScore = 44;
-      isSybilDamped = true;
+      isGatekeeperCapped = true;
+      gatekeeperReason = "Sybil Risk Alert: Unverified DNS identity with insufficient WoT endorsements. Score capped at 44.";
     }
   }
 
-  // Tier classification
+  // Tier and Sybil Resistance classification
   let tier: TrustScoreResult["tier"] = "Unverified / Potential Bot";
   let tierColor = "text-rose-400";
   let tierBg = "bg-rose-950/40";
   let tierBorder = "border-rose-800/80";
   let sybilResistanceLevel: TrustScoreResult["sybilResistanceLevel"] = "Vulnerable";
-  let summary = isSybilDamped
-    ? `Sybil Risk Alert: Unverified DNS identity with isolated Web-of-Trust graph (Hop ${resolvedWot.distance}). Capped at 44.`
+  let summary = isGatekeeperCapped
+    ? gatekeeperReason
     : "Caution: Unverified identity keys. Exercise caution before conducting high-value Zaps.";
 
-  if (finalScore >= 80) {
-    tier = "Verified Builder";
-    tierColor = "text-emerald-400";
-    tierBg = "bg-emerald-950/40";
-    tierBorder = "border-emerald-700/80";
-    sybilResistanceLevel = "High";
-    summary = "High Sybil Resistance: Cryptographically verified NIP-05 identity with strong Web-of-Trust graph.";
-  } else if (finalScore >= 50) {
-    tier = "Active Contributor";
-    tierColor = "text-amber-400";
-    tierBg = "bg-amber-950/40";
-    tierBorder = "border-amber-700/80";
-    sybilResistanceLevel = "Medium";
-    summary = "Moderate Sybil Resistance: Real network participant with partial cryptographic verification.";
+  if (resolvedWot.distance >= 3) {
+    // Strictly forced "Unverified / Potential Bot" regardless of metadata or NIP-05
+    tier = "Unverified / Potential Bot";
+    tierColor = "text-rose-400";
+    tierBg = "bg-rose-950/40";
+    tierBorder = "border-rose-800/80";
+    sybilResistanceLevel = "Vulnerable";
+    if (!isGatekeeperCapped) {
+      summary = "High Sybil Risk: Isolated keypair outside the Web-of-Trust graph (Hop > 2).";
+    }
+  } else if (resolvedWot.distance === 2) {
+    // Hop 2: Cannot exceed "Active Contributor" (if finalScore >= 50, otherwise Unverified)
+    if (finalScore >= 50) {
+      tier = "Active Contributor";
+      tierColor = "text-amber-400";
+      tierBg = "bg-amber-950/40";
+      tierBorder = "border-amber-700/80";
+      sybilResistanceLevel = "Medium";
+      if (!isGatekeeperCapped) {
+        summary = "Moderate Sybil Resistance: Transitive trust established via Ring-1 nodes (Hop 2).";
+      }
+    } else {
+      tier = "Unverified / Potential Bot";
+      tierColor = "text-rose-400";
+      tierBg = "bg-rose-950/40";
+      tierBorder = "border-rose-800/80";
+      sybilResistanceLevel = "Low";
+      if (!isGatekeeperCapped) {
+        summary = "Nascent keypair with partial transitive trust (Hop 2). Low composite score.";
+      }
+    }
+  } else {
+    // Only accounts with distance <= 1 (Hop 0 or Hop 1) are eligible for "Verified Builder" (>= 80 points)
+    if (resolvedWot.distance === 0) {
+      tier = "Verified Builder";
+      tierColor = "text-emerald-400";
+      tierBg = "bg-emerald-950/40";
+      tierBorder = "border-emerald-700/80";
+      sybilResistanceLevel = "High";
+      summary = `Root Seed Anchor: Direct cryptographic pillar in the Nostr Core Web-of-Trust (${resolvedWot.tier || "Core Protocol"}).`;
+    } else if (finalScore >= 80) {
+      tier = "Verified Builder";
+      tierColor = "text-emerald-400";
+      tierBg = "bg-emerald-950/40";
+      tierBorder = "border-emerald-700/80";
+      sybilResistanceLevel = "High";
+      summary = "High Sybil Resistance: Cryptographically verified identity with direct Ring-1 Web-of-Trust endorsement.";
+    } else if (finalScore >= 50) {
+      tier = "Active Contributor";
+      tierColor = "text-amber-400";
+      tierBg = "bg-amber-950/40";
+      tierBorder = "border-amber-700/80";
+      sybilResistanceLevel = "Medium";
+      summary = "Moderate Sybil Resistance: Direct Ring-1 follower with partial cryptographic verification.";
+    } else {
+      tier = "Unverified / Potential Bot";
+      tierColor = "text-rose-400";
+      tierBg = "bg-rose-950/40";
+      tierBorder = "border-rose-800/80";
+      sybilResistanceLevel = finalScore >= 35 ? "Low" : "Vulnerable";
+      if (!isGatekeeperCapped) {
+        summary = "Caution: Low composite score despite Ring-1 connection.";
+      }
+    }
   }
 
   return {
