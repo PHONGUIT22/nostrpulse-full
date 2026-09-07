@@ -2,8 +2,14 @@
 import { NostrProfile, fetchNostrProfile, DEFAULT_RELAYS } from "@/lib/nostr";
 import { Nip05Result } from "@/lib/nip05";
 
+import { 
+  getWebOfTrustDistance, 
+  resolveWebOfTrustDistance, 
+  WebOfTrustDistanceResult 
+} from "@/lib/wot";
+
 export { fetchNostrProfile, DEFAULT_RELAYS };
-export type { NostrProfile };
+export type { NostrProfile, WebOfTrustDistanceResult };
 
 export interface TrustScoreBreakdownItem {
   label: string;
@@ -24,23 +30,16 @@ export interface TrustScoreResult {
   summary: string;
   nip05Status: Nip05Result;
   wotScore: number;
+  wotDistance: 0 | 1 | 2 | 3;
+  wotDetails?: WebOfTrustDistanceResult;
   sybilResistanceLevel: "High" | "Medium" | "Low" | "Vulnerable";
   breakdown: TrustScoreBreakdownItem[];
 }
 
-// Trusted core seed keys in Nostr network used for Web-of-Trust (WoT) scoring
-const REPUTABLE_SEED_PUBKEYS = new Set([
-  "82341f882b6eabcd2ba7f1ef90aad961cf074af15b9ef44a04f9d61825e81d02", // jack
-  "3bf0c63fcb93463407af97b5e0907d743715840c6ee7abbd2e1070d12194e322", // fiatjaf
-  "04c915daefee38317fa734444acee618e13e4537084fb5dd00d31024f6b8733d", // odell
-  "32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245", // jb55 (Damus)
-  "6e468422dfb74a5738702a8823b9b24e6042f4ff427a944bb8427906aec33732", // nvk (Coinkite)
-  "d0dd2632b85fa1e6f987f650fc90e55ee14f9d9a0d845e2c56a1b8db5fdfbc05", // derekross
-]);
-
 export function calculateTrustScore(
   profile: NostrProfile | null,
-  nip05Result?: Nip05Result
+  nip05Result?: Nip05Result,
+  wotResult?: WebOfTrustDistanceResult
 ): TrustScoreResult {
   // 1. Resolve NIP-05 identifier
   const resolvedNip05: Nip05Result = nip05Result || {
@@ -59,6 +58,7 @@ export function calculateTrustScore(
       summary: "Profile data is unavailable or could not be queried from open relays.",
       nip05Status: resolvedNip05,
       wotScore: 0,
+      wotDistance: 3,
       sybilResistanceLevel: "Vulnerable",
       breakdown: [],
     };
@@ -95,44 +95,36 @@ export function calculateTrustScore(
   });
 
   // =========================================================================
-  // Pillar 2: Web-of-Trust (WoT) & Graph Connectivity (Max: 25 pts)
+  // Pillar 2: Web-of-Trust (WoT) Social Distance (Max: 25 pts)
   // =========================================================================
-  let wotPoints = 0;
-  const isSeedKey = profile.pubkey && REPUTABLE_SEED_PUBKEYS.has(profile.pubkey.toLowerCase());
+  const resolvedWot: WebOfTrustDistanceResult =
+    wotResult || getWebOfTrustDistance(profile.pubkey || "");
 
-  if (isSeedKey) {
-    wotPoints = 25;
-  } else if ((profile as any).wot_score && typeof (profile as any).wot_score === "number") {
-    wotPoints = Math.min(25, Math.round(((profile as any).wot_score / 100) * 25));
+  const wotPoints = resolvedWot.wotPoints;
+  rawScore += wotPoints;
+
+  let wotDescription = "";
+  if (resolvedWot.distance === 0) {
+    wotDescription = "Hop 0: Core Root Anchor";
+  } else if (resolvedWot.distance === 1) {
+    const endorsers = resolvedWot.endorsers || [];
+    const sample = endorsers.slice(0, 3).join(", ");
+    const extra = endorsers.length > 3 ? ` +${endorsers.length - 3} more` : "";
+    wotDescription = `Hop 1: Endorsed by ${resolvedWot.endorsedByCount} Anchors${sample ? ` (${sample}${extra})` : ""}`;
+  } else if (resolvedWot.distance === 2) {
+    wotDescription = `Hop 2: Transitive Trust via ${resolvedWot.endorsedByCount} Ring-1 node${resolvedWot.endorsedByCount > 1 ? "s" : ""}`;
   } else {
-    // Evaluated based on social graph heuristics
-    const followers = (profile as any).followers_count || 0;
-    const following = (profile as any).following_count || 0;
-
-    if (followers > 500) {
-      wotPoints = 20;
-    } else if (followers > 100 || following > 50) {
-      wotPoints = 12;
-    } else if (followers > 10) {
-      wotPoints = 6;
-    } else {
-      wotPoints = 0;
-    }
+    wotDescription = "Hop > 2: Isolated keypair outside trust graph";
   }
 
-  rawScore += wotPoints;
   breakdown.push({
-    label: "Web-of-Trust (WoT) Graph Connectivity",
+    label: "Web-of-Trust (WoT) Social Distance",
     category: "Web-of-Trust (WoT)",
     points: wotPoints,
     maxPoints: 25,
-    passed: wotPoints >= 12,
-    sybilRiskLevel: wotPoints >= 12 ? "Low" : "Moderate",
-    description: isSeedKey
-      ? "Direct Seed Node in the Nostr Core Web-of-Trust"
-      : wotPoints >= 12
-      ? `Established network connectivity across distributed follower graph`
-      : "Isolated or nascent keypair (Low Web-of-Trust endorsements)",
+    passed: wotPoints >= 10,
+    sybilRiskLevel: resolvedWot.sybilRisk,
+    description: wotDescription,
   });
 
   // =========================================================================
@@ -228,7 +220,7 @@ export function calculateTrustScore(
   let tierBorder = "border-rose-800/80";
   let sybilResistanceLevel: TrustScoreResult["sybilResistanceLevel"] = "Vulnerable";
   let summary = isSybilDamped
-    ? "Sybil Risk Alert: Unverified DNS identity with isolated network graph. Capped at 44."
+    ? `Sybil Risk Alert: Unverified DNS identity with isolated Web-of-Trust graph (Hop ${resolvedWot.distance}). Capped at 44.`
     : "Caution: Unverified identity keys. Exercise caution before conducting high-value Zaps.";
 
   if (finalScore >= 80) {
@@ -256,7 +248,31 @@ export function calculateTrustScore(
     summary,
     nip05Status: resolvedNip05,
     wotScore: wotPoints,
+    wotDistance: resolvedWot.distance,
+    wotDetails: resolvedWot,
     sybilResistanceLevel,
     breakdown,
   };
+}
+
+/**
+ * Asynchronously calculates the Trust Score with multi-hop graph resolution.
+ * Resolves Hop 0 and Hop 1 via in-memory snapshot, and queries relays for Hop 2
+ * transitive trust (enforcing <= 3000ms timeout via Promise.race).
+ *
+ * @param profile - Nostr profile
+ * @param nip05Result - Optional pre-verified NIP-05 result
+ * @param options - Relay query options for Hop 2
+ */
+export async function calculateTrustScoreAsync(
+  profile: NostrProfile | null,
+  nip05Result?: Nip05Result,
+  options?: { relays?: string[]; timeoutMs?: number }
+): Promise<TrustScoreResult> {
+  if (!profile || !profile.pubkey) {
+    return calculateTrustScore(profile, nip05Result);
+  }
+
+  const wotResult = await resolveWebOfTrustDistance(profile.pubkey, options);
+  return calculateTrustScore(profile, nip05Result, wotResult);
 }
