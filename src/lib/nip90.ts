@@ -1,7 +1,36 @@
 // src/lib/nip90.ts
 import { SimplePool, finalizeEvent, generateSecretKey, getPublicKey, nip19 } from "nostr-tools";
 import type { Event, EventTemplate, VerifiedEvent } from "nostr-tools";
-import { DEFAULT_RELAYS, mergeRelays, normalizeToHex } from "@/lib/nostr";
+import { DEFAULT_RELAYS, mergeRelays, normalizeRelayUrl, normalizeToHex } from "@/lib/nostr";
+
+// Verified responsive relays allowlist to prevent connection timeouts from unreachable/dead relays
+const RESPONSIVE_RELAYS_ALLOWLIST = new Set<string>([
+  "wss://relay.primal.net",
+  "wss://nos.lol",
+  "wss://relay.nostr.band",
+]);
+
+/**
+ * Filters requested relays against the responsive allowlist.
+ * If empty or contains no responsive relays, falls back directly to DEFAULT_RELAYS.
+ */
+export function sanitizeRelays(relays: string[] = []): string[] {
+  if (!Array.isArray(relays) || relays.length === 0) {
+    return DEFAULT_RELAYS;
+  }
+
+  const filtered = relays
+    .map((r) => {
+      try {
+        return normalizeRelayUrl(r);
+      } catch {
+        return "";
+      }
+    })
+    .filter((r) => r && RESPONSIVE_RELAYS_ALLOWLIST.has(r));
+
+  return filtered.length > 0 ? Array.from(new Set(filtered)) : DEFAULT_RELAYS;
+}
 
 export interface PublishJobRequestParams {
   prompt: string;
@@ -85,7 +114,8 @@ export function parseJobRequestEvent(event: Event): OpenBountyTask {
   const category = specificCategory || tTags[0] || "nostrpulse-task";
 
   const relaysTag = event.tags.find((t) => t[0] === "relays");
-  const relays = relaysTag ? relaysTag.slice(1).filter((r) => typeof r === "string") : [];
+  const rawRelays = relaysTag ? relaysTag.slice(1).filter((r) => typeof r === "string") : [];
+  const relays = sanitizeRelays(rawRelays);
 
   return {
     id: event.id,
@@ -121,7 +151,7 @@ export async function publishJobRequest({
   secretKey,
   customSigner,
 }: PublishJobRequestParams): Promise<Event | VerifiedEvent> {
-  const targetRelays = mergeRelays(relays, DEFAULT_RELAYS);
+  const targetRelays = sanitizeRelays(relays);
   const { hex: normalizedInput } = normalizeToHex(prompt);
 
   // Construct NIP-90 Job Request tags
@@ -177,7 +207,7 @@ export async function publishJobRequest({
  * created within the last 24 hours.
  */
 export async function fetchOpenBounties(relays: string[] = []): Promise<OpenBountyTask[]> {
-  const targetRelays = mergeRelays(relays, DEFAULT_RELAYS);
+  const targetRelays = sanitizeRelays(relays);
   const pool = getNip90Pool();
 
   const oneDayAgo = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
@@ -223,13 +253,12 @@ export function subscribeJobFeedbackAndResult(
   onResult: (result: JobResult) => void,
   relays: string[] = []
 ): Nip90Subscription {
-  const targetRelays = mergeRelays(relays, DEFAULT_RELAYS);
+  const targetRelays = sanitizeRelays(relays);
   const pool = getNip90Pool();
 
   const filter = {
     kinds: [6000, 7000],
     "#e": [jobId],
-    since: Math.floor(Date.now() / 1000) - 300,
   };
 
   const sub = pool.subscribeMany(targetRelays, filter, {
