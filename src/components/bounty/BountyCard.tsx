@@ -219,7 +219,7 @@ export default function BountyCard({ task, cachedProfile, cachedTrustScore }: Bo
               jobId={task.id}
               demandedAmountSats={task.bidSats > 0 ? task.bidSats : 5}
               taskPrompt={task.prompt}
-              workerPubkey={task.pubkey}
+              workerPubkey=""
               onClose={() => setIsResultModalOpen(false)}
             />
           </DialogContent>
