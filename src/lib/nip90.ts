@@ -23,7 +23,8 @@ export function sanitizeRelays(relays: string[] = []): string[] {
     .map((r) => {
       try {
         return normalizeRelayUrl(r);
-      } catch {
+      } catch (err) {
+        console.debug("[NIP-90] Failed to normalize relay URL:", r, err);
         return "";
       }
     })
@@ -135,9 +136,7 @@ export function getNip90Pool(): SimplePool {
 }
 
 /**
- * 1. publishJobRequest
- * Packages and signs a Kind 5000 Job Request event, utilizing normalizeToHex,
- * then publishes it across the designated relay pool.
+ * Packages and signs a Kind 5000 NIP-90 Job Request and publishes across relays.
  */
 export async function publishJobRequest({
   prompt,
@@ -192,15 +191,19 @@ export async function publishJobRequest({
 
   const pool = getNip90Pool();
   const pubs = pool.publish(targetRelays, signedEvent);
-  await Promise.allSettled(pubs);
+  await Promise.allSettled(pubs).then((results) => {
+    results.forEach((res, i) => {
+      if (res.status === "rejected") {
+        console.debug(`[NIP-90] Publish rejected on ${targetRelays[i]}:`, res.reason);
+      }
+    });
+  });
 
   return signedEvent;
 }
 
 /**
- * 2. fetchOpenBounties
- * Uses pool.querySync to retrieve Kind 5000 events tagged with ["t", "nostrpulse-task"]
- * created within the last 24 hours.
+ * Retrieves active Kind 5000 open bounty tasks published within the last 24 hours.
  */
 export async function fetchOpenBounties(relays: string[] = []): Promise<OpenBountyTask[]> {
   const targetRelays = sanitizeRelays(relays);
@@ -214,7 +217,10 @@ export async function fetchOpenBounties(relays: string[] = []): Promise<OpenBoun
   };
 
   try {
-    const events = await pool.querySync(targetRelays, filter, { maxWait: 2500 }).catch(() => []);
+    const events = await pool.querySync(targetRelays, filter, { maxWait: 2500 }).catch((err) => {
+      console.debug("[NIP-90] querySync error in fetchOpenBounties:", err);
+      return [];
+    });
 
     if (!Array.isArray(events) || events.length === 0) {
       return [];
@@ -233,15 +239,13 @@ export async function fetchOpenBounties(relays: string[] = []): Promise<OpenBoun
 
     return tasks.sort((a, b) => b.created_at - a.created_at);
   } catch (err) {
-    console.warn("[NIP-90] Failed to fetch open bounties:", err);
+    console.debug("[NIP-90] Failed to fetch open bounties:", err);
     return [];
   }
 }
 
 /**
- * 3. subscribeJobFeedbackAndResult
- * Opens a WebSocket subscription to monitor Kind 7000 (feedback) and Kind 6000 (result)
- * events tagged with ["e", jobId].
+ * Subscribes via WebSocket to live Kind 7000 feedback and Kind 6000 result events for a specific job ID.
  */
 export function subscribeJobFeedbackAndResult(
   jobId: string,
@@ -284,7 +288,8 @@ export function subscribeJobFeedbackAndResult(
         let resultData: any = undefined;
         try {
           resultData = JSON.parse(event.content);
-        } catch {
+        } catch (parseErr) {
+          console.debug("[NIP-90] Non-JSON Kind 6000 result payload, using raw text:", parseErr);
           resultData = event.content;
         }
 
@@ -308,7 +313,9 @@ export function subscribeJobFeedbackAndResult(
     close: () => {
       try {
         sub.close();
-      } catch {}
+      } catch (err) {
+        console.debug("[NIP-90] Subscription close warning:", err);
+      }
     },
   };
 }

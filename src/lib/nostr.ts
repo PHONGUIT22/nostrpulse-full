@@ -87,7 +87,9 @@ export function mergeRelays(primary: string[] = [], fallback: string[] = DEFAULT
         if (!DISALLOWED_RELAYS.has(clean)) {
           set.add(clean);
         }
-      } catch {}
+      } catch (err) {
+        console.debug("[Nostr] Failed to parse/normalize relay URL:", r, err);
+      }
     }
   });
   const res = Array.from(set);
@@ -102,12 +104,12 @@ export function bytesToHex(bytes: Uint8Array | number[]): string {
 }
 
 /**
- * 1. Safe conversion between npub, nprofile, and 64-char Hex Pubkey
+ * Normalizes user input (npub, nprofile, or hex) into a canonical 64-char hex public key and npub.
  */
 export function normalizeToHex(input: string): { hex: string; npub: string } {
   const clean = input.trim();
 
-  // 1.1 Decode if npub1...
+  // Decode npub identifier
   if (clean.startsWith("npub1")) {
     try {
       const decoded = nip19.decode(clean);
@@ -117,10 +119,12 @@ export function normalizeToHex(input: string): { hex: string; npub: string } {
           : bytesToHex(decoded.data as any);
         return { hex: hex.toLowerCase(), npub: clean };
       }
-    } catch {}
+    } catch (err) {
+      console.debug("[Nostr] Failed to decode npub identifier:", clean, err);
+    }
   }
 
-  // 1.2 Support nprofile1...
+  // Decode NIP-19 nprofile identifier
   if (clean.startsWith("nprofile1")) {
     try {
       const decoded = nip19.decode(clean);
@@ -128,20 +132,24 @@ export function normalizeToHex(input: string): { hex: string; npub: string } {
         const hex = decoded.data.pubkey.toLowerCase();
         return { hex, npub: nip19.npubEncode(hex) };
       }
-    } catch {}
+    } catch (err) {
+      console.debug("[Nostr] Failed to decode nprofile identifier:", clean, err);
+    }
   }
 
-  // 1.3 If valid 64-character hex string
+  // Validate standard 64-character hex pubkey
   if (/^[0-9a-fA-F]{64}$/.test(clean)) {
     try {
       return {
         hex: clean.toLowerCase(),
         npub: nip19.npubEncode(clean.toLowerCase()),
       };
-    } catch {}
+    } catch (err) {
+      console.debug("[Nostr] Failed to encode hex to npub:", clean, err);
+    }
   }
 
-  // 1.4 Match with featured creator list (Handle / NPUB)
+  // Lookup in featured creator registry
   const match = FEATURED_CREATORS.find(
     (c) =>
       c.npub === clean ||
@@ -157,7 +165,7 @@ export function normalizeToHex(input: string): { hex: string; npub: string } {
 }
 
 /**
- * 2. Fetches user's personal relay list (NIP-65 Kind 10002)
+ * Fetches a user's NIP-65 relay list metadata (Kind 10002).
  */
 export async function fetchUserRelays(pubkeyOrNpub: string): Promise<string[]> {
   const { hex: hexPubkey } = normalizeToHex(pubkeyOrNpub);
@@ -172,7 +180,10 @@ export async function fetchUserRelays(pubkeyOrNpub: string): Promise<string[]> {
       kinds: [10002],
       authors: [hexPubkey],
       limit: 1,
-    }).catch(() => []);
+    }).catch((err) => {
+      console.debug("[Nostr] querySync error in fetchUserRelays:", err);
+      return [];
+    });
 
     const events = await Promise.race([queryPromise, timeoutPromise]);
 
@@ -191,15 +202,15 @@ export async function fetchUserRelays(pubkeyOrNpub: string): Promise<string[]> {
       }
     }
   } catch (err) {
-    console.warn("Failed to fetch NIP-65 relay list:", err);
+    console.debug("[Nostr] Failed to fetch NIP-65 relay list:", err);
   }
 
   return DEFAULT_RELAYS;
 }
 
 /**
- * 3. Fetches profile directly from Nostr WebSocket relay pool (P2P)
- * Uses in-memory promise cache to prevent flooding relays on concurrent queries.
+ * Fetches user profile metadata (Kind 0) from connected relays, with Primal API and local fallback.
+ * Employs an in-memory promise cache to deduplicate concurrent requests.
  */
 export async function fetchNostrProfile(npubOrHex: string, customRelays?: string[]): Promise<NostrProfile | null> {
   const { hex: hexPubkey, npub: encodedNpub } = normalizeToHex(npubOrHex);
@@ -213,20 +224,22 @@ export async function fetchNostrProfile(npubOrHex: string, customRelays?: string
     const targetRelays = mergeRelays(customRelays, DEFAULT_RELAYS);
     const pool = getNostrPool();
 
-    // --- Priority 1: Query all relays & get latest Kind 0 event ---
+    // Primary strategy: Query connected relays for latest Kind 0 metadata
     try {
       const timeoutPromise = new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 2500));
 
-      // Query all Kind 0 events across connected relays
       const queryPromise = pool.querySync(targetRelays, {
         kinds: [0],
         authors: [hexPubkey],
-      }).catch(() => []);
+      }).catch((err) => {
+        console.debug("[Nostr] querySync error in fetchNostrProfile:", err);
+        return [];
+      });
 
       const events = await Promise.race([queryPromise, timeoutPromise]);
 
       if (Array.isArray(events) && events.length > 0) {
-        // Sort descending by created_at to always pick the newest record
+        // Pick the newest event by created_at timestamp
         const latestEvent = events.sort((a, b) => b.created_at - a.created_at)[0];
 
         if (latestEvent && latestEvent.content) {
@@ -247,21 +260,21 @@ export async function fetchNostrProfile(npubOrHex: string, customRelays?: string
               relays_connected: targetRelays.length,
             };
           } catch (parseErr) {
-            console.warn("Malformed JSON in kind:0 profile event:", parseErr);
+            console.debug("[Nostr] Malformed JSON in kind 0 profile event:", parseErr);
           }
         }
       }
     } catch (err) {
-      console.warn("Relay pool query timed out, trying fallback cache...");
+      console.debug("[Nostr] Relay pool query timed out, attempting fallback cache:", err);
     }
 
-    // --- Priority 2: Fallback from Primal API (cache disabled) ---
+    // Secondary strategy: Primal caching API fallback
     try {
       const resPrimal = await fetch("https://primal.net/api", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(["user_profile", { pubkey: hexPubkey }]),
-        cache: "no-store", // Force fresh data fetch, no caching
+        cache: "no-store",
         signal: AbortSignal.timeout(2000),
       });
 
@@ -286,13 +299,17 @@ export async function fetchNostrProfile(npubOrHex: string, customRelays?: string
                 created_at: kind0.created_at,
                 relays_connected: targetRelays.length,
               };
-            } catch {}
+            } catch (parseErr) {
+              console.debug("[Nostr] Malformed JSON in Primal profile event:", parseErr);
+            }
           }
         }
       }
-    } catch {}
+    } catch (primalErr) {
+      console.debug("[Nostr] Primal fallback query failed:", primalErr);
+    }
 
-    // --- Priority 3: Fallback to local cache list ---
+    // Tertiary strategy: Embedded curated creators list fallback
     const matched = FEATURED_CREATORS.find(
       (c) => c.npub === encodedNpub || c.pubkey?.toLowerCase() === hexPubkey.toLowerCase()
     );
@@ -320,7 +337,7 @@ export async function fetchNostrProfile(npubOrHex: string, customRelays?: string
 }
 
 /**
- * 4. Fetches latest notes (Kind 1) from relays
+ * Fetches recent text notes (Kind 1) authored by the given pubkey.
  */
 export async function fetchRecentNotes(npubOrHex: string, limit: number = 5, customRelays?: string[]): Promise<NostrNote[]> {
   const { hex: hexPubkey } = normalizeToHex(npubOrHex);
@@ -336,7 +353,10 @@ export async function fetchRecentNotes(npubOrHex: string, limit: number = 5, cus
       kinds: [1],
       authors: [hexPubkey],
       limit: limit * 2,
-    }).catch(() => []);
+    }).catch((err) => {
+      console.debug("[Nostr] querySync error in fetchRecentNotes:", err);
+      return [];
+    });
 
     const events = await Promise.race([queryPromise, timeoutPromise]);
 
@@ -353,7 +373,7 @@ export async function fetchRecentNotes(npubOrHex: string, limit: number = 5, cus
         tags: e.tags,
       }));
   } catch (err) {
-    console.warn("Failed to fetch creator notes:", err);
+    console.debug("[Nostr] Failed to fetch creator notes:", err);
     return [];
   }
 }
