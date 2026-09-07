@@ -5,12 +5,9 @@ import { FEATURED_CREATORS } from "@/lib/creators";
 
 // Top public Nostr relays for high-availability fallback
 export const DEFAULT_RELAYS = [
-  "wss://relay.damus.io",
-  "wss://nos.lol",
   "wss://relay.primal.net",
-  "wss://relay.nostr.band",
-  "wss://nostr.wine",
-  "wss://relay.snort.social"
+  "wss://nos.lol",
+  "wss://relay.nostr.band"
 ];
 
 export interface NostrProfile {
@@ -48,19 +45,30 @@ export function normalizeRelayUrl(url: string): string {
   return clean;
 }
 
+const DISALLOWED_RELAYS = new Set([
+  "wss://relay.damus.io",
+  "wss://nostr.wine",
+  "wss://relay.snort.social",
+  "wss://eden.nostr.land",
+]);
+
 /**
- * Deduplicates and sanitizes relay list
+ * Deduplicates and sanitizes relay list, filtering out known problematic relays
  */
 export function mergeRelays(primary: string[] = [], fallback: string[] = DEFAULT_RELAYS): string[] {
   const set = new Set<string>();
   [...primary, ...fallback].forEach((r) => {
     if (r && typeof r === "string") {
       try {
-        set.add(normalizeRelayUrl(r));
+        const clean = normalizeRelayUrl(r);
+        if (!DISALLOWED_RELAYS.has(clean)) {
+          set.add(clean);
+        }
       } catch {}
     }
   });
-  return Array.from(set);
+  const res = Array.from(set);
+  return res.length > 0 ? res : DEFAULT_RELAYS;
 }
 
 /**

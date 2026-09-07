@@ -35,9 +35,8 @@ export const RECOMMENDED_MINTS: CashuMintOption[] = [
 export const DEFAULT_CASHU_MINT = RECOMMENDED_MINTS[0].url;
 
 const RELAYS = [
-  "wss://relay.damus.io",
-  "wss://nos.lol",
   "wss://relay.primal.net",
+  "wss://nos.lol",
   "wss://relay.nostr.band"
 ];
 
