@@ -171,6 +171,7 @@ const createExecuteNutzapTool = (sessionToken?: string) =>
         return {
           success: true,
           eventId: zapEvent.id,
+          changeToken: zapEvent.changeToken,
           recipientPubkey: hexPubkey,
           amountSats,
           mintUrl,

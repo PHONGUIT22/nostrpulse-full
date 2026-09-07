@@ -34,7 +34,7 @@ async function main() {
   const cashuToken = `cashuA${base64.replace(/\+/g, "-").replace(/\//g, "_")}`;
 
   console.log("[NutZap] Executing sendCashuNutZap to worker...");
-  const zapEvent = await sendCashuNutZap({
+  const { signedEvent: zapEvent, changeToken } = await sendCashuNutZap({
     recipientPubkey: workerPk,
     cashuToken,
     amountSats: 5,
@@ -46,6 +46,7 @@ async function main() {
   console.log(">>> sendCashuNutZap SUCCESS!");
   console.log(`    Event ID : ${zapEvent.id}`);
   console.log(`    Kind     : ${zapEvent.kind} (NIP-61 NutZap)`);
+  console.log(`    Change   : ${changeToken ? "Change token generated" : "Exact payment (no change)"}`);
   console.log(`    Recipient: ${workerPk}`);
   console.log(`    Amount   : 5000 msats (5 sats)`);
   console.log("==========================================================\n");

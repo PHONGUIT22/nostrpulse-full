@@ -184,7 +184,8 @@ export function isValidMintUrl(url: string): boolean {
   try {
     const parsed = new URL(url.trim());
     return parsed.protocol === "https:" || parsed.protocol === "http:";
-  } catch {
+  } catch (err) {
+    console.debug("[Cashu] Invalid mint URL string:", url, err);
     return false;
   }
 }
@@ -199,7 +200,9 @@ export function encodeCashuToken(mintUrl: string, proofs: CashuProof[], unit = "
     if (typeof getEncodedToken === "function") {
       return (getEncodedToken as any)({ mint: cleanMint, proofs, unit });
     }
-  } catch {}
+  } catch (err) {
+    console.debug("[Cashu] getEncodedToken fallback to manual encoding:", err);
+  }
 
   const v3Payload = {
     token: [{ mint: cleanMint, proofs }],
@@ -249,7 +252,8 @@ function decodeCashuString(tokenString: string): any {
 }
 
 /**
- * 1. Extracts Satoshi balance and proofs from Token (supports V3 JSON and V4 NUT-00 CBOR Map)
+ * Decodes a Cashu token string into structured proof and mint metadata.
+ * Supports legacy JSON format (cashuA) and NUT-00 CBOR format (cashuB).
  */
 export function parseCashuToken(tokenString: string): DecodedCashuInfo {
   const trimmed = tokenString.trim();
@@ -268,7 +272,7 @@ export function parseCashuToken(tokenString: string): DecodedCashuInfo {
   let proofs: CashuProof[] = [];
   let unit = decoded.unit || decoded.u || "sat";
 
-  // Branch 1: V4 Raw CBOR structure per NUT-00 spec (m, u, t -> i, p -> a, s, c)
+  // NUT-00 V4 CBOR structure (m, u, t -> i, p -> a, s, c)
   if (Array.isArray(decoded.t)) {
     mint = decoded.m || DEFAULT_CASHU_MINT;
     for (const group of decoded.t) {
@@ -302,12 +306,12 @@ export function parseCashuToken(tokenString: string): DecodedCashuInfo {
       }
     }
   }
-  // Branch 2: V4 standard Object structure (mint, proofs, unit at root)
+  // NUT-00 V4 standard object structure
   else if (Array.isArray(decoded.proofs)) {
     mint = decoded.mint || DEFAULT_CASHU_MINT;
     proofs = decoded.proofs;
   }
-  // Branch 3: V3 structure (decoded.token is an array of entries containing mint and proofs)
+  // Legacy V3 token payload structure
   else if (Array.isArray(decoded.token) && decoded.token.length > 0) {
     mint = decoded.token[0].mint || DEFAULT_CASHU_MINT;
     for (const entry of decoded.token) {
@@ -333,7 +337,38 @@ export function parseCashuToken(tokenString: string): DecodedCashuInfo {
 }
 
 /**
- * 2. Verifies token validity with the Mint (with timeout to prevent hanging)
+ * Splits Cashu token proofs into exact send amount and change proofs to prevent overpaying
+ */
+export async function splitCashuToken(
+  tokenString: string,
+  amountToSend: number
+): Promise<{ sendToken: string; changeToken: string | null }> {
+  const info = parseCashuToken(tokenString);
+  if (info.totalAmountSats < amountToSend) {
+    throw new Error(`Insufficient funds: token has ${info.totalAmountSats} sats, but ${amountToSend} sats required.`);
+  }
+  if (info.totalAmountSats === amountToSend) {
+    return { sendToken: tokenString, changeToken: null };
+  }
+
+  const cleanMint = info.mint.trim().replace(/\/+$/, "");
+  const wallet = new Wallet(cleanMint);
+  await wallet.loadMint().catch((e) => console.debug("[Cashu] loadMint warning:", e));
+
+  // Split proofs into exact send amount and change proofs
+  const sendResult: any = await wallet.send(amountToSend, info.proofs as any);
+  const returnChange = sendResult.keep || sendResult.returnChange;
+  const send = sendResult.send;
+  const sendToken = encodeCashuToken(cleanMint, send, info.unit);
+  const changeToken = returnChange && returnChange.length > 0 
+    ? encodeCashuToken(cleanMint, returnChange, info.unit) 
+    : null;
+
+  return { sendToken, changeToken };
+}
+
+/**
+ * Verifies whether token proofs remain unspent against the issuing mint.
  */
 export async function verifyTokenWithMint(tokenString: string): Promise<{ isValid: boolean; reason?: string }> {
   try {
@@ -348,7 +383,9 @@ export async function verifyTokenWithMint(tokenString: string): Promise<{ isVali
         if (typeof (wallet as any).loadMint === "function") {
           try {
             await (wallet as any).loadMint();
-          } catch {}
+          } catch (loadErr) {
+            console.debug("[Cashu] loadMint error during token verification:", loadErr);
+          }
         }
 
         let spentStates: any[] = [];
@@ -369,7 +406,7 @@ export async function verifyTokenWithMint(tokenString: string): Promise<{ isVali
           }
         }
       } catch (e: any) {
-        console.warn("Mint verification check warning:", e);
+        console.debug("[Cashu] Mint verification check warning:", e);
       }
 
       return { isValid: true };
@@ -387,7 +424,7 @@ export async function verifyTokenWithMint(tokenString: string): Promise<{ isVali
 }
 
 /**
- * 3. Creates a Lightning Invoice to mint eCash using dynamic Mint URL
+ * Requests a Lightning BOLT-11 invoice quote to mint eCash proofs from a Cashu mint.
  */
 export async function createCashuMintQuote(amountSats: number, mintUrl: string = DEFAULT_CASHU_MINT) {
   const cleanMint = mintUrl.trim().replace(/\/+$/, "");
@@ -397,10 +434,12 @@ export async function createCashuMintQuote(amountSats: number, mintUrl: string =
     if (typeof (wallet as any).loadMint === "function") {
       try {
         await (wallet as any).loadMint();
-      } catch {}
+      } catch (loadErr) {
+        console.debug("[Cashu] loadMint warning during quote creation:", loadErr);
+      }
     }
 
-    // 1. Try standard Cashu-TS v4 method
+    // Attempt standard Cashu-TS v4 BOLT-11 quote method
     if (typeof (wallet as any).createMintQuoteBolt11 === "function") {
       try {
         const quote = await (wallet as any).createMintQuoteBolt11(amountSats);
@@ -409,10 +448,12 @@ export async function createCashuMintQuote(amountSats: number, mintUrl: string =
           quoteId: quote.quote || quote.hash || quote.id,
           mintUrl: cleanMint,
         };
-      } catch {}
+      } catch (bolt11Err) {
+        console.debug("[Cashu] createMintQuoteBolt11 fallback:", bolt11Err);
+      }
     }
 
-    // 2. Try createMintQuote with method: 'bolt11'
+    // Attempt legacy createMintQuote method
     if (typeof (wallet as any).createMintQuote === "function") {
       try {
         const quote = await (wallet as any).createMintQuote("bolt11", amountSats);
@@ -421,7 +462,8 @@ export async function createCashuMintQuote(amountSats: number, mintUrl: string =
           quoteId: quote.quote || quote.hash || quote.id,
           mintUrl: cleanMint,
         };
-      } catch {
+      } catch (createErr) {
+        console.debug("[Cashu] createMintQuote('bolt11') failed, trying default arg:", createErr);
         try {
           const quote = await (wallet as any).createMintQuote(amountSats);
           return {
@@ -429,14 +471,16 @@ export async function createCashuMintQuote(amountSats: number, mintUrl: string =
             quoteId: quote.quote || quote.hash || quote.id,
             mintUrl: cleanMint,
           };
-        } catch {}
+        } catch (quoteErr) {
+          console.debug("[Cashu] createMintQuote fallback failed:", quoteErr);
+        }
       }
     }
   } catch (walletErr) {
-    console.warn("Wallet instance mint quote failed, attempting direct REST fallback:", walletErr);
+    console.debug("[Cashu] Wallet instance mint quote failed, attempting direct REST fallback:", walletErr);
   }
 
-  // 3. Fallback to direct NUT-04 REST API call on the Mint
+  // Fallback to direct NUT-04 REST API call on the Mint
   try {
     const res = await fetch(`${cleanMint}/v1/mint/quote/bolt11`, {
       method: "POST",
@@ -455,14 +499,14 @@ export async function createCashuMintQuote(amountSats: number, mintUrl: string =
       }
     }
   } catch (err) {
-    console.error("Direct NUT-04 REST Mint request failed:", err);
+    console.debug("[Cashu] Direct NUT-04 REST Mint request failed:", err);
   }
 
   throw new Error(`Could not request Mint invoice from ${cleanMint}.`);
 }
 
 /**
- * 4. Polls payment status and claims minted cashu token string
+ * Polls payment status of a mint quote until settled and retrieves minted proofs.
  */
 export async function pollMintAndClaimToken(
   amountSats: number,
@@ -476,7 +520,9 @@ export async function pollMintAndClaimToken(
   if (typeof (wallet as any).loadMint === "function") {
     try {
       await (wallet as any).loadMint();
-    } catch {}
+    } catch (loadErr) {
+      console.debug("[Cashu] loadMint warning during pollMintAndClaimToken:", loadErr);
+    }
   }
 
   const startTime = Date.now();
@@ -498,8 +544,8 @@ export async function pollMintAndClaimToken(
       if (Array.isArray(proofs) && proofs.length > 0) {
         return encodeCashuToken(cleanMint, proofs);
       }
-    } catch {
-      // Payment pending, continue polling
+    } catch (pollErr) {
+      console.debug("[Cashu] Poll pending invoice on mint:", pollErr);
     }
     await new Promise((r) => setTimeout(r, 2000));
   }
@@ -519,14 +565,18 @@ async function encryptCashuPayload(
     try {
       const encrypted = await (window as any).nostr.nip44.encrypt(recipientHexPubkey, rawPayload);
       if (encrypted) return { encryptedContent: encrypted, encryptionScheme: "nip44" };
-    } catch {}
+    } catch (err) {
+      console.debug("[Cashu] Window nostr NIP-44 encryption failed, falling back:", err);
+    }
   }
 
   if (typeof window !== "undefined" && (window as any).nostr?.nip04?.encrypt) {
     try {
       const encrypted = await (window as any).nostr.nip04.encrypt(recipientHexPubkey, rawPayload);
       if (encrypted) return { encryptedContent: encrypted, encryptionScheme: "nip04" };
-    } catch {}
+    } catch (err) {
+      console.debug("[Cashu] Window nostr NIP-04 encryption failed, falling back:", err);
+    }
   }
 
   try {
@@ -535,14 +585,16 @@ async function encryptCashuPayload(
       const encrypted = (nip44 as any).v2.encrypt(rawPayload, conversationKey);
       return { encryptedContent: encrypted, encryptionScheme: "nip44" };
     }
-  } catch {}
+  } catch (err) {
+    console.debug("[Cashu] Local nostr-tools NIP-44 v2 encryption failed, falling back to NIP-04:", err);
+  }
 
   const encrypted = await nip04.encrypt(ephemeralSk, recipientHexPubkey, rawPayload);
   return { encryptedContent: encrypted, encryptionScheme: "nip04" };
 }
 
 /**
- * 5. Sends fully encrypted Cashu NutZap (NIP-61 Kind 9321)
+ * Encrypts and publishes a NIP-61 NutZap (Kind 9321) eCash payment.
  */
 export async function sendCashuNutZap({
   recipientPubkey,
@@ -556,13 +608,21 @@ export async function sendCashuNutZap({
   amountSats: number;
   comment?: string;
   mintUrl: string;
-}) {
+}): Promise<{
+  signedEvent: any;
+  changeToken: string | null;
+  id: string;
+  kind?: number;
+  [key: string]: any;
+}> {
   let hexPubkey = recipientPubkey;
   if (hexPubkey.startsWith("npub1")) {
     try {
       const decoded = nip19.decode(hexPubkey);
       if (decoded.type === "npub") hexPubkey = decoded.data as string;
-    } catch {}
+    } catch (err) {
+      console.debug("[Cashu] Recipient npub decoding fallback:", err);
+    }
   }
 
   if (!hexPubkey || !/^[0-9a-fA-F]{64}$/.test(hexPubkey)) {
@@ -572,8 +632,11 @@ export async function sendCashuNutZap({
   const cleanMint = (mintUrl || DEFAULT_CASHU_MINT).trim().replace(/\/+$/, "");
   const ephemeralSk = generateSecretKey();
 
+  // Split Cashu token into exact send amount and change token
+  const { sendToken, changeToken } = await splitCashuToken(cashuToken, amountSats);
+
   const secretNutZapPayload = JSON.stringify({
-    token: cashuToken.trim(),
+    token: sendToken.trim(),
     memo: comment?.trim() || "Value-4-Value eCash NutZap 🥜",
     amount: amountSats,
     mint: cleanMint,
@@ -604,7 +667,9 @@ export async function sendCashuNutZap({
   if (typeof window !== "undefined" && (window as any).nostr?.signEvent) {
     try {
       signedEvent = await (window as any).nostr.signEvent(eventTemplate);
-    } catch {}
+    } catch (err) {
+      console.debug("[Cashu] Window nostr.signEvent failed, using ephemeral key:", err);
+    }
   }
 
   if (!signedEvent) {
@@ -619,7 +684,9 @@ export async function sendCashuNutZap({
       try {
         const pub = pool.publish([relayUrl], signedEvent);
         await Promise.race([pub, timeoutPromise]);
-      } catch {}
+      } catch (err) {
+        console.debug(`[Cashu] Failed to publish NutZap to ${relayUrl}:`, err);
+      }
     });
 
     await Promise.race([
@@ -627,12 +694,20 @@ export async function sendCashuNutZap({
       new Promise((resolve) => setTimeout(resolve, 2000)),
     ]);
   } catch (err) {
-    console.warn("Relay pool broadcast finished with minor warnings:", err);
+    console.debug("[Cashu] Relay pool broadcast finished with warnings:", err);
   } finally {
     try {
       pool.close(RELAYS);
-    } catch {}
+    } catch (err) {
+      console.debug("[Cashu] Pool close warning:", err);
+    }
   }
 
-  return signedEvent;
+  return {
+    signedEvent,
+    changeToken,
+    id: signedEvent.id,
+    kind: signedEvent.kind,
+    ...signedEvent,
+  };
 }
