@@ -36,8 +36,7 @@ export const DEFAULT_CASHU_MINT = RECOMMENDED_MINTS[0].url;
 
 const RELAYS = [
   "wss://relay.primal.net",
-  "wss://nos.lol",
-  "wss://relay.nostr.band"
+  "wss://nos.lol"
 ];
 
 export interface CashuProof {

@@ -6,7 +6,6 @@ const pool = new SimplePool();
 const relays = [
   "wss://relay.primal.net",
   "wss://nos.lol",
-  "wss://relay.nostr.band",
 ];
 const sk = generateSecretKey();
 const processedTasks = new Set();
