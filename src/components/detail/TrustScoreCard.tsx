@@ -54,9 +54,27 @@ export default function TrustScoreCard({ trustData, name, npub = "" }: Props) {
           {/* Column 2: Risk overview */}
           <div className="md:col-span-2 space-y-4">
             <div className="p-4 bg-slate-950/70 rounded-2xl border border-slate-800">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                Reputation Assessment:
-              </span>
+              <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  Reputation Assessment:
+                </span>
+                {trustData.wotDistance !== undefined && (
+                  <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${
+                    trustData.wotDistance === 0
+                      ? "bg-purple-500/10 text-purple-300 border-purple-500/30"
+                      : trustData.wotDistance === 1
+                      ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
+                      : trustData.wotDistance === 2
+                      ? "bg-amber-500/10 text-amber-300 border-amber-500/30"
+                      : "bg-slate-800/80 text-slate-400 border-slate-700"
+                  }`}>
+                    {trustData.wotDistance === 0 && "Hop 0 • Core Anchor"}
+                    {trustData.wotDistance === 1 && "Hop 1 • Ring-1 Verified"}
+                    {trustData.wotDistance === 2 && "Hop 2 • Transitive Trust"}
+                    {trustData.wotDistance === 3 && "Hop > 2 • Isolated Key"}
+                  </span>
+                )}
+              </div>
               <p className="text-sm text-slate-300 leading-relaxed">
                 {summary}
               </p>
