@@ -86,17 +86,16 @@ export default function TaskResultView({
     amountSats: number;
     recipientPubkey: string;
     mintUrl: string;
+    changeToken?: string;
   } | null>(null);
 
   const [copiedTxId, setCopiedTxId] = useState(false);
 
-  // 1. Auto-load Cashu token from session/localStorage if available
+  // 1. Auto-load Cashu token from ephemeral sessionStorage if available
+  // Note: Ephemeral session caching used for MVP interactive demo. Production migration targets NIP-60 wallet isolation.
   useEffect(() => {
     if (!cashuToken && typeof window !== "undefined") {
-      const savedToken =
-        sessionStorage.getItem("cashu_token") ||
-        localStorage.getItem("cashu_token") ||
-        localStorage.getItem("nostr_cashu_token");
+      const savedToken = sessionStorage.getItem("cashu_token");
       if (savedToken) {
         setCashuToken(savedToken.trim());
       }
@@ -181,7 +180,7 @@ export default function TaskResultView({
 
   // Format recipient pubkey to npub for display
   const workerNpub = useMemo(() => {
-    if (!workerPubkey) return "Unknown Worker";
+    if (!workerPubkey) return "Awaiting worker claim...";
     try {
       return nip19.npubEncode(workerPubkey);
     } catch {
@@ -237,7 +236,7 @@ export default function TaskResultView({
       console.log(`[TaskResultView] Mint: ${cleanMint}`);
 
       // Call sendCashuNutZap directly from lib/cashu.ts (Kind 9321 via NIP-44)
-      const zapEvent = await sendCashuNutZap({
+      const { signedEvent, changeToken } = await sendCashuNutZap({
         recipientPubkey: workerPubkey,
         cashuToken: trimmedToken,
         amountSats: paymentAmount,
@@ -245,18 +244,30 @@ export default function TaskResultView({
         mintUrl: cleanMint,
       });
 
-      console.log("[TaskResultView] sendCashuNutZap successful! Event ID:", zapEvent?.id);
+      console.log("[TaskResultView] sendCashuNutZap successful! Event ID:", signedEvent?.id);
 
-      // Save token in session storage for frictionless repeated payments
+      // Handle change token vs fully spent token
+      // Note: Ephemeral session caching used for MVP interactive demo. Production migration targets NIP-60 wallet isolation.
       if (typeof window !== "undefined") {
-        sessionStorage.setItem("cashu_token", trimmedToken);
+        if (changeToken) {
+          sessionStorage.setItem("cashu_token", changeToken);
+        } else {
+          sessionStorage.removeItem("cashu_token");
+        }
+      }
+
+      if (changeToken) {
+        setCashuToken(changeToken);
+      } else {
+        setCashuToken("");
       }
 
       const txResult = {
-        eventId: zapEvent?.id || "settled-nutzap-tx",
+        eventId: signedEvent?.id || "settled-nutzap-tx",
         amountSats: paymentAmount,
         recipientPubkey: workerPubkey,
         mintUrl: cleanMint,
+        changeToken: changeToken || undefined,
       };
 
       setSettledTx(txResult);
@@ -302,9 +313,9 @@ export default function TaskResultView({
 
         {/* Worker Info Pill */}
         <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200/80">
-          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+          <div className={`w-2 h-2 rounded-full ${workerPubkey ? "bg-emerald-500 animate-ping" : "bg-amber-400 animate-pulse"}`} />
           <span className="text-xs font-mono text-slate-600 font-bold">
-            Worker: {workerNpub.slice(0, 10)}...
+            {workerPubkey ? `Worker: ${workerNpub.slice(0, 10)}...` : workerNpub}
           </span>
         </div>
       </div>
@@ -448,6 +459,12 @@ export default function TaskResultView({
                 <span>🥜</span>
                 <span>{settledTx.amountSats.toLocaleString()} Sats</span>
               </div>
+              {settledTx.changeToken && (
+                <div className="text-[11px] text-emerald-300 font-mono mt-1 font-semibold flex items-center gap-1">
+                  <span>🪙</span>
+                  <span>Change thối lại retained in your session</span>
+                </div>
+              )}
             </div>
 
             <div className="text-left sm:text-right">
@@ -614,12 +631,17 @@ export default function TaskResultView({
               <Button
                 onClick={handleAcceptAndPay}
                 disabled={isPaying || !workerPubkey || isVerifyingToken || (!resultText && !resultData)}
-                className="h-11 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-lg shadow-emerald-600/20 hover:shadow-emerald-600/30 flex items-center gap-2 transition-all cursor-pointer"
+                className="h-11 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-lg shadow-emerald-600/20 hover:shadow-emerald-600/30 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {isPaying ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
                     <span>Encrypting NIP-44 NutZap...</span>
+                  </>
+                ) : !workerPubkey ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-slate-200" />
+                    <span>Awaiting worker claim...</span>
                   </>
                 ) : (
                   <>

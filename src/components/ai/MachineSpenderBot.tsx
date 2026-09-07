@@ -32,7 +32,8 @@ const DEMO_TESTNUT_TOKEN =
   "cashuAeyJ0b2tlbiI6W3sibWludCI6Imh0dHBzOi8vdGVzdG51dC5jYXNodS5zcGFjZSIsInByb29mcyI6W3siaWQiOiIwMDlhMmJmNzhmYmNhZDlkIiwiYW1vdW50IjoyMSwic2VjcmV0IjoiMWI5OTRhZmQtMGMwNi00Y2UzLTlmZDYtOGQxZjAwZTRlMmUxIiwiQyI6IjAyMDNmYjg5ZGI3Mjg4MWZjNGQ0N2JjODRlMTExMjdmMDlhY2RjZGE2MjM1YmNhZjY5ZjY1MDVlYWY5ZDJlZjFlYiJ9XX1dfQ==";
 
 export default function MachineSpenderBot() {
-  // Budget Input State
+  // Budget Input State - kept strictly in component memory state to prevent XSS leakage
+  // Note: Ephemeral memory state prevents XSS token theft. Production migration targets NIP-60 wallet isolation.
   const [cashuToken, setCashuToken] = useState<string>("");
   const [showToken, setShowToken] = useState<boolean>(false);
 
