@@ -34,20 +34,32 @@ import {
 import { subscribeJobFeedbackAndResult, JobFeedback, JobResult } from "@/lib/nip90";
 import { nip19 } from "nostr-tools";
 
+/**
+ * Properties for the TaskResultView component.
+ */
 export interface TaskResultViewProps {
+  /** Unique NIP-90 Job Request Event ID */
   jobId: string;
+  /** Public key of the worker / DVM claiming or fulfilling the task */
   workerPubkey?: string;
+  /** Sats amount requested for the deliverable */
   demandedAmountSats?: number;
+  /** Preloaded raw string content of Kind 6000 result */
   initialResultContent?: string;
+  /** Preloaded structured payload object (e.g., Trust Score metrics) */
   initialResultData?: any;
+  /** Original user prompt associated with the bounty task */
   taskPrompt?: string;
+  /** Optional initial Cashu eCash token to fund the settlement */
   initialCashuToken?: string;
+  /** Callback fired upon successful NIP-61 NutZap payment broadcast */
   onPaidSuccess?: (txData: {
     eventId: string;
     amountSats: number;
     recipientPubkey: string;
     mintUrl: string;
   }) => void;
+  /** Optional callback to close the modal or drawer */
   onClose?: () => void;
 }
 

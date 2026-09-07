@@ -363,7 +363,14 @@ export function parseCashuToken(tokenString: string): DecodedCashuInfo {
 }
 
 /**
- * Splits Cashu token proofs into exact send amount and change proofs to prevent overpaying
+ * Splits Cashu token proofs into an exact send amount and change proofs to prevent overpaying.
+ * Resolves truncated 16-hex Keyset ID prefixes (NUT-00 CBOR format) to full 66-hex Keyset IDs
+ * against the target Mint before executing swap/send operations.
+ *
+ * @param tokenString - Cashu token string (cashuA... or cashuB...)
+ * @param amountToSend - Amount of sats to allocate for the recipient
+ * @param overrideMintUrl - Optional mint URL to prioritize over token payload
+ * @returns Object containing the exact send token and optional change token
  */
 export async function splitCashuToken(
   tokenString: string,
