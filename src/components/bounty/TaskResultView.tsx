@@ -208,6 +208,11 @@ export default function TaskResultView({
       return;
     }
 
+    if (!resultText && !resultData) {
+      setPaymentError("Deliverable is still pending. Please wait for Kind 6000 result.");
+      return;
+    }
+
     const trimmedToken = cashuToken.trim();
     if (!trimmedToken) {
       setShowTokenInput(true);
@@ -608,7 +613,7 @@ export default function TaskResultView({
 
               <Button
                 onClick={handleAcceptAndPay}
-                disabled={isPaying || !workerPubkey || isVerifyingToken}
+                disabled={isPaying || !workerPubkey || isVerifyingToken || (!resultText && !resultData)}
                 className="h-11 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-lg shadow-emerald-600/20 hover:shadow-emerald-600/30 flex items-center gap-2 transition-all cursor-pointer"
               >
                 {isPaying ? (
