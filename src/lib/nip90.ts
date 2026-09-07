@@ -1,14 +1,14 @@
-// src/lib/nip90.ts
 import { SimplePool, finalizeEvent, generateSecretKey, getPublicKey, nip19 } from "nostr-tools";
 import type { Event, EventTemplate, VerifiedEvent } from "nostr-tools";
-import { DEFAULT_RELAYS, mergeRelays, normalizeRelayUrl, normalizeToHex } from "@/lib/nostr";
+import { getNostrPool, DEFAULT_RELAYS, mergeRelays, normalizeRelayUrl, normalizeToHex } from "@/lib/nostr";
 
 // Verified responsive relays allowlist to prevent connection timeouts from unreachable/dead relays
 const RESPONSIVE_RELAYS_ALLOWLIST = new Set<string>([
   "wss://relay.primal.net",
   "wss://nos.lol",
-  "wss://relay.nostr.band",
 ]);
+
+export { DEFAULT_RELAYS };
 
 /**
  * Filters requested relays against the responsive allowlist.
@@ -130,12 +130,8 @@ export function parseJobRequestEvent(event: Event): OpenBountyTask {
   };
 }
 
-let sharedPool: SimplePool | null = null;
 export function getNip90Pool(): SimplePool {
-  if (!sharedPool) {
-    sharedPool = new SimplePool();
-  }
-  return sharedPool;
+  return getNostrPool();
 }
 
 /**
@@ -218,7 +214,7 @@ export async function fetchOpenBounties(relays: string[] = []): Promise<OpenBoun
   };
 
   try {
-    const events = await pool.querySync(targetRelays, filter, { maxWait: 2500 });
+    const events = await pool.querySync(targetRelays, filter, { maxWait: 2500 }).catch(() => []);
 
     if (!Array.isArray(events) || events.length === 0) {
       return [];
