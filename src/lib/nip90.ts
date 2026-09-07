@@ -283,7 +283,6 @@ export function subscribeJobFeedbackAndResult(
     close: () => {
       try {
         sub.close();
-        pool.close(targetRelays);
       } catch {}
     },
   };

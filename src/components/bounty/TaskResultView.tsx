@@ -145,8 +145,8 @@ export default function TaskResultView({
       jobId,
       (feedback: JobFeedback) => {
         setFeedbackStatus(feedback.status);
-        if (feedback.workerPubkey && !workerPubkey) {
-          setWorkerPubkey(feedback.workerPubkey);
+        if (feedback.workerPubkey) {
+          setWorkerPubkey((prev) => prev || feedback.workerPubkey);
         }
       },
       (result: JobResult) => {
@@ -164,7 +164,8 @@ export default function TaskResultView({
     return () => {
       sub.close();
     };
-  }, [jobId, resultText, resultData, workerPubkey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId]);
 
   // Parse JSON if resultText is provided
   useEffect(() => {
