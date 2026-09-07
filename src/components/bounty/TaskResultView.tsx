@@ -462,7 +462,7 @@ export default function TaskResultView({
               {settledTx.changeToken && (
                 <div className="text-[11px] text-emerald-300 font-mono mt-1 font-semibold flex items-center gap-1">
                   <span>🪙</span>
-                  <span>Change thối lại retained in your session</span>
+                  <span>Change refunded and retained in your session</span>
                 </div>
               )}
             </div>
