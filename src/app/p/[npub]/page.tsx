@@ -8,6 +8,7 @@ import {
 } from "@/lib/nostr";
 import { verifyNip05 } from "@/lib/nip05";
 import { calculateTrustScore, calculateTrustScoreAsync } from "@/lib/trust-score";
+import { discoverAndCrawlCreator } from "@/lib/discovery";
 import LightningZapCard from "@/components/detail/LightningZapCard";
 import TrustScoreCard from "@/components/detail/TrustScoreCard";
 import TrustScoreBadge from "@/components/detail/TrustScoreBadge";
@@ -59,6 +60,13 @@ export default async function CreatorProfilePage({ params }: PageProps) {
   const resolvedParams = await params;
   const rawNpub = decodeURIComponent(resolvedParams.npub);
   const { hex: hexPubkey, npub: encodedNpub } = normalizeToHex(rawNpub);
+
+  // Trigger background graph crawl & discovery into SQLite database
+  if (hexPubkey && /^[0-9a-fA-F]{64}$/.test(hexPubkey)) {
+    discoverAndCrawlCreator(hexPubkey).catch((err) =>
+      console.debug("[Profile] Background crawl discovery error:", err)
+    );
+  }
 
   // Fetch profile and latest 4 notes (Kind 1) from relay pool in parallel
   const [rawProfile, recentNotes] = await Promise.all([

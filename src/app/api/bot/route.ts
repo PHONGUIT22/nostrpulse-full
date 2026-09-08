@@ -46,14 +46,25 @@ const findCreator = tool({
     const { hex, npub } = normalizeToHex(name);
     const cleanName = name.trim().toLowerCase();
 
-    // Match with featured creators cache if available
-    const matched = FEATURED_CREATORS.find(
-      (c) =>
-        c.npub === npub ||
-        c.pubkey?.toLowerCase() === hex.toLowerCase() ||
-        c.handle?.toLowerCase() === cleanName ||
-        c.name?.toLowerCase() === cleanName
-    );
+    // Match with database first, then fallback to featured creators cache
+    let matched = null;
+    try {
+      const { getCreatorFromDb } = await import("@/lib/db");
+      const dbMatch = await getCreatorFromDb(hex || cleanName);
+      if (dbMatch) {
+        matched = dbMatch;
+      }
+    } catch {}
+
+    if (!matched) {
+      matched = FEATURED_CREATORS.find(
+        (c) =>
+          c.npub === npub ||
+          c.pubkey?.toLowerCase() === hex.toLowerCase() ||
+          c.handle?.toLowerCase() === cleanName ||
+          c.name?.toLowerCase() === cleanName
+      ) || null;
+    }
 
     const isValidHex = /^[0-9a-fA-F]{64}$/.test(hex);
 

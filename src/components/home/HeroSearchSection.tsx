@@ -2,26 +2,56 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Key, Zap, Loader2 } from "lucide-react";
+import { Search, Key, Zap, Loader2, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { resolveNostrSearch } from "@/lib/search";
 
 export default function HeroSearchSection() {
   const [query, setQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const router = useRouter();
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!query.trim() || isSearching) return;
+    const cleanQuery = query.trim();
+    if (!cleanQuery || isSearching) return;
+
     setIsSearching(true);
+    setStatusMessage("Indexing & resolving Nostr identity...");
+
     try {
-      const targetUrl = await resolveNostrSearch(query);
-      router.push(targetUrl);
+      // 1. Kick off Dynamic Discovery crawl to store in DB & crawl graph
+      const discoverPromise = fetch("/api/creators/discover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: cleanQuery }),
+      })
+        .then((res) => res.json())
+        .catch(() => null);
+
+      // 2. If it is already a direct npub or hex, resolve immediately for instant UI response
+      const isDirectKey = cleanQuery.startsWith("npub1") || /^[0-9a-fA-F]{64}$/.test(cleanQuery);
+
+      if (isDirectKey) {
+        const targetUrl = resolveNostrSearch(cleanQuery);
+        // Non-blocking navigation
+        router.push(targetUrl);
+      } else {
+        // For handles or text queries, await discover result to resolve npub
+        const result = await discoverPromise;
+        if (result && result.targetUrl) {
+          router.push(result.targetUrl);
+        } else {
+          router.push(resolveNostrSearch(cleanQuery));
+        }
+      }
     } catch (err) {
       console.error("Search error:", err);
+      router.push(resolveNostrSearch(cleanQuery));
     } finally {
       setIsSearching(false);
+      setStatusMessage(null);
     }
   };
 
@@ -54,7 +84,7 @@ export default function HeroSearchSection() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Enter npub1... or hex key"
+            placeholder="Enter npub1..., hex key, or handle"
             className="w-full bg-transparent text-slate-900 placeholder-slate-400 focus:outline-none font-medium text-base sm:text-lg"
           />
         </div>
@@ -67,6 +97,13 @@ export default function HeroSearchSection() {
           <span>Search</span>
         </button>
       </form>
+
+      {statusMessage && (
+        <div className="mt-3 flex items-center justify-center gap-2 text-xs font-semibold text-purple-600 animate-pulse">
+          <Sparkles className="w-3.5 h-3.5" />
+          <span>{statusMessage}</span>
+        </div>
+      )}
 
       {/* POPULAR CREATORS LINKS */}
       <div className="mt-4 flex items-center justify-center gap-2 text-xs text-slate-500 flex-wrap">

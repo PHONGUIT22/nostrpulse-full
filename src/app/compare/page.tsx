@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { FEATURED_CREATORS, Creator } from "@/lib/creators";
@@ -20,7 +20,18 @@ import {
 
 export default function CompareHubPage() {
   const router = useRouter();
-  const creators = FEATURED_CREATORS;
+  const [creators, setCreators] = useState<Creator[]>(FEATURED_CREATORS);
+
+  useEffect(() => {
+    fetch("/api/creators?limit=100")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setCreators(data);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Selected creators A & B (defaults to first two)
   const [selectedNpubA, setSelectedNpubA] = useState<string>(creators[0]?.npub || "");
