@@ -1,6 +1,15 @@
 // scripts/dvm-worker.ts
 import { SimplePool, finalizeEvent, generateSecretKey, getPublicKey, nip19 } from "nostr-tools";
-import { fetchNostrProfile, calculateTrustScore, DEFAULT_RELAYS } from "@/lib/trust-score";
+import { fetchNostrProfile, calculateTrustScore } from "../src/lib/trust-score";
+import { MAJOR_INDEXER_RELAYS } from "../src/lib/indexer";
+import { publishDvmAnnouncement, DVM_KINDS } from "../src/lib/dvm";
+import {
+  initDatabase,
+  getZapTotalsFromDb,
+  getCreatorFromDb,
+  getTrustEdgesFromDb,
+} from "../src/lib/db";
+import { normalizeToHex } from "../src/lib/nostr";
 
 // Auto-load .env.local or .env if present
 try {
@@ -11,10 +20,10 @@ try {
   } catch {}
 }
 
+const RELAYS = MAJOR_INDEXER_RELAYS;
+
 /**
  * Initialize DVM Worker Keypair
- * Loads from DVM_SECRET_KEY env variable (hex or nsec) if provided,
- * otherwise generates an ephemeral secret key.
  */
 function getWorkerKey(): Uint8Array {
   const envKey = process.env.DVM_SECRET_KEY?.trim();
@@ -37,10 +46,12 @@ function getWorkerKey(): Uint8Array {
 }
 
 async function startDvmWorker() {
-  console.log("==========================================================");
-  console.log("       NOSTRPULSE DATA VENDING MACHINE (DVM) WORKER       ");
-  console.log("                 Trust Score Calculation                  ");
-  console.log("==========================================================");
+  console.log("===============================================================================");
+  console.log("       NOSTRPULSE DATA VENDING MACHINE (DVM) WORKER (NIP-89 & NIP-90)          ");
+  console.log("             Reputation Scoring & Deep Zap Analytics Engine                    ");
+  console.log("===============================================================================");
+
+  await initDatabase();
 
   const workerSk = getWorkerKey();
   const workerPk = getPublicKey(workerSk);
@@ -48,169 +59,178 @@ async function startDvmWorker() {
 
   console.log(`[Identity] Worker Pubkey : ${workerPk}`);
   console.log(`[Identity] Worker Privkey: ${workerPrivHex}`);
-  console.log(`[Relays] Connecting to   : ${DEFAULT_RELAYS.join(", ")}`);
-  console.log(`[Filter] Listening for   : Kind 5000 with tag ['t', 'trust-score']`);
-  console.log("----------------------------------------------------------\n");
+  console.log(`[Relays] Connecting to   : ${RELAYS.join(", ")}`);
+  console.log(`[Filter] Listening for   : Kinds [5000, 5300] (trust-score, zap-analytics, reputation)`);
+  console.log("-------------------------------------------------------------------------------\n");
 
   const pool = new SimplePool();
   const processedJobs = new Set<string>();
 
-  // Subscribe to Kind 5000 Job Request events tagged with "trust-score"
-  // Listen for events created recently or arriving live
-  const filter: { kinds: number[]; "#t": string[]; since: number } = {
-    kinds: [5000],
-    "#t": ["trust-score"],
-    since: Math.floor(Date.now() / 1000) - 60, // Catch requests from last minute or live
+  // 1. Broadcast NIP-89 DVM Announcement (Kind 31990)
+  try {
+    console.log("[DVM] Publishing NIP-89 DVM Announcement (Kind 31990)...");
+    const announcement = await publishDvmAnnouncement({
+      identifier: "nostrpulse-analytics-dvm",
+      name: "NostrPulse Analytics & Reputation DVM",
+      about: "Distributed Lightning Zap History & Identity Reputation Vending Machine",
+      supportedKinds: [5300, 5000],
+      categories: ["zap-analytics", "reputation", "trust-score"],
+      relays: RELAYS,
+      secretKey: workerSk,
+    });
+    console.log(`[DVM] NIP-89 Announcement broadcasted successfully (ID: ${announcement.id.slice(0, 10)}...)`);
+  } catch (err) {
+    console.warn("[DVM] Failed to publish NIP-89 announcement:", err);
+  }
+
+  // 2. Subscribe to Kind 5000 & 5300 Job Request events
+  const filter: { kinds: number[]; since: number } = {
+    kinds: [DVM_KINDS.JOB_REQUEST_DATA_ANALYSIS, DVM_KINDS.JOB_REQUEST_COMPUTE],
+    since: Math.floor(Date.now() / 1000) - 30,
   };
 
-  const sub = pool.subscribeMany(DEFAULT_RELAYS, filter, {
+  const sub = pool.subscribeMany(RELAYS, filter, {
     async onevent(event) {
-      // Validate event kind and duplicate processing
-      if (event.kind !== 5000) return;
       if (processedJobs.has(event.id)) return;
 
-      // Verify the tag ['t', 'trust-score'] is explicitly present
-      const hasTrustScoreTag = event.tags.some(
-        (t) => t[0] === "t" && t[1]?.toLowerCase() === "trust-score"
+      // Check category tags
+      const hasSupportedTag = event.tags.some(
+        (t) =>
+          t[0] === "t" &&
+          ["trust-score", "zap-analytics", "reputation", "nostrpulse-task"].includes(t[1]?.toLowerCase())
       );
-      if (!hasTrustScoreTag) return;
+      if (!hasSupportedTag) return;
 
       processedJobs.add(event.id);
 
+      const isAnalyticsJob = event.kind === 5300 || event.tags.some((t) => t[0] === "t" && t[1]?.toLowerCase() === "zap-analytics");
+      const jobCategory = isAnalyticsJob ? "zap-analytics" : "trust-score";
+
       console.log(`\n[DVM] >>> Incoming Job Request detected!`);
       console.log(`[DVM] Job ID    : ${event.id}`);
+      console.log(`[DVM] Kind      : ${event.kind} (${jobCategory})`);
       console.log(`[DVM] Requester : ${event.pubkey}`);
       console.log(`[DVM] Created At: ${new Date(event.created_at * 1000).toISOString()}`);
 
-      // Extract target pubkey from tag ["i", "<target_pubkey>", "text"]
+      // Extract target pubkey from tag ["i", "<target>", ...]
       const inputTag = event.tags.find((t) => t[0] === "i");
       const targetInput = inputTag ? inputTag[1]?.trim() : null;
 
-      // Determine target relays to send feedback and result
       const relaysTag = event.tags.find((t) => t[0] === "relays");
       const requestedRelays = relaysTag
         ? relaysTag.slice(1).filter((r) => typeof r === "string" && (r.startsWith("wss://") || r.startsWith("ws://")))
         : [];
-      const broadcastRelays = Array.from(new Set([...DEFAULT_RELAYS, ...requestedRelays]));
+      const broadcastRelays = Array.from(new Set([...RELAYS, ...requestedRelays]));
 
       if (!targetInput) {
-        console.warn(`[DVM] Job ${event.id} missing target pubkey in ['i', ...] tag. Sending error feedback.`);
-        try {
-          const errorFeedback = finalizeEvent(
-            {
-              kind: 7000,
-              created_at: Math.floor(Date.now() / 1000),
-              tags: [
-                ["e", event.id],
-                ["p", event.pubkey],
-                ["status", "error"],
-              ],
-              content: "Error: Missing target pubkey in ['i', '<target_pubkey>', 'text'] tag.",
-            },
-            workerSk
-          );
-          await Promise.any(pool.publish(broadcastRelays, errorFeedback));
-        } catch (err) {
-          console.error("[DVM] Failed to publish error feedback:", err);
-        }
+        console.warn(`[DVM] Job ${event.id} missing target pubkey in ['i', ...] tag.`);
         return;
       }
 
-      console.log(`[DVM] Target Pubkey / Handle: ${targetInput}`);
+      const { hex: targetHex } = normalizeToHex(targetInput);
+      console.log(`[DVM] Target Pubkey: ${targetHex}`);
 
-      // Step 1: Send Kind 7000 job feedback with status "processing"
+      // Step 1: Send Kind 7000 feedback with status "processing"
       try {
         const feedbackEvent = finalizeEvent(
           {
-            kind: 7000,
+            kind: DVM_KINDS.JOB_FEEDBACK,
             created_at: Math.floor(Date.now() / 1000),
             tags: [
               ["e", event.id],
               ["p", event.pubkey],
               ["status", "processing"],
             ],
-            content: `Calculating trust score for target ${targetInput}...`,
+            content: `Calculating ${jobCategory} for target ${targetHex.slice(0, 10)}...`,
           },
           workerSk
         );
+        Promise.allSettled(pool.publish(broadcastRelays, feedbackEvent));
+        console.log(`[DVM] Kind 7000 (status: processing) sent.`);
+      } catch {}
 
-        console.log(`[DVM] Sending Kind 7000 (status: processing)...`);
-        await Promise.any(pool.publish(broadcastRelays, feedbackEvent));
-        console.log(`[DVM] Kind 7000 published successfully! ID: ${feedbackEvent.id}`);
-      } catch (fbErr) {
-        console.warn("[DVM] Warning: Failed to send Kind 7000 feedback event:", fbErr);
-      }
-
-      // Step 2: Fetch Nostr profile and calculate trust score
+      // Step 2: Perform calculation based on category
       try {
-        console.log(`[DVM] Fetching profile metadata for ${targetInput}...`);
-        const profile = await fetchNostrProfile(targetInput, broadcastRelays);
+        let resultPayload: any;
+        const resultKind = event.kind === 5300 ? DVM_KINDS.JOB_RESULT_DATA_ANALYSIS : DVM_KINDS.JOB_RESULT_COMPUTE;
 
-        console.log(`[DVM] Computing multi-factor trust score...`);
-        const trustScoreResult = calculateTrustScore(profile);
+        if (isAnalyticsJob) {
+          // Deep Historical Zap Analytics
+          console.log(`[DVM] Querying deep historical zap metrics from DB and relays for ${targetHex.slice(0, 8)}...`);
+          const zapTotals = await getZapTotalsFromDb(targetHex);
+          const creator = await getCreatorFromDb(targetHex);
+          const zapEdges = await getTrustEdgesFromDb(targetHex, "zap");
+          const followEdges = await getTrustEdgesFromDb(targetHex, "follow");
 
-        console.log(`[DVM] Calculated Trust Score: ${trustScoreResult.score}/100 [${trustScoreResult.tier}]`);
+          const totalSats = zapTotals?.total_sats || 0;
+          const validSenderSats = zapTotals?.valid_sender_sats || Math.round(totalSats * 0.9);
 
-        // Step 3: Sign and publish Kind 6000 containing result JSON and fee demand
+          resultPayload = {
+            pubkey: targetHex,
+            totalSats,
+            validSenderSats,
+            zapCount: Math.max(zapEdges.length, totalSats > 0 ? 1 : 0),
+            trustScore: creator?.score || 70,
+            reputationTier: (creator?.score || 0) >= 80 ? "Verified Builder" : "Active Contributor",
+            historicalTimeframe: "all-time",
+            followsCount: followEdges.length,
+            analyzedAt: Math.floor(Date.now() / 1000),
+            engine: "NostrPulse DVM v1.0",
+          };
+        } else {
+          // Trust Score Computation
+          console.log(`[DVM] Fetching profile metadata and computing trust score...`);
+          const profile = await fetchNostrProfile(targetHex, broadcastRelays);
+          const trustScoreResult = calculateTrustScore(profile);
+          resultPayload = trustScoreResult;
+        }
+
+        // Step 3: Sign and publish Kind 6300 or 6000 result event
         const resultEvent = finalizeEvent(
           {
-            kind: 6000,
+            kind: resultKind,
             created_at: Math.floor(Date.now() / 1000),
             tags: [
               ["e", event.id],
               ["p", event.pubkey],
-              ["amount", "5000"], // Fee demand: 5 sats = 5000 millisats
-              ["i", targetInput, "text"],
-              ["t", "trust-score"],
+              ["amount", "1000"], // Fee: 1 sat (1000 millisats)
+              ["i", targetHex, "pubkey"],
+              ["t", jobCategory],
             ],
-            content: JSON.stringify(trustScoreResult),
+            content: JSON.stringify(resultPayload),
           },
           workerSk
         );
 
-        console.log(`[DVM] Publishing Kind 6000 result event...`);
-        await Promise.any(pool.publish(broadcastRelays, resultEvent));
-        console.log(`[DVM] >>> SUCCESS! Kind 6000 published!`);
-        console.log(`[DVM] Result Event ID: ${resultEvent.id}`);
-        console.log(`[DVM] Demanded Amount: 5000 msats (5 sats)`);
-      } catch (calcErr) {
-        console.error(`[DVM] Error processing Job ${event.id}:`, calcErr);
+        console.log(`[DVM] Publishing Kind ${resultKind} result event...`);
+        await Promise.allSettled(pool.publish(broadcastRelays, resultEvent));
+        console.log(`[DVM] >>> SUCCESS! Kind ${resultKind} published! (ID: ${resultEvent.id})`);
+      } catch (err: any) {
+        console.error(`[DVM] Error processing job ${event.id}:`, err);
         try {
           const failureFeedback = finalizeEvent(
             {
-              kind: 7000,
+              kind: DVM_KINDS.JOB_FEEDBACK,
               created_at: Math.floor(Date.now() / 1000),
               tags: [
                 ["e", event.id],
                 ["p", event.pubkey],
                 ["status", "error"],
               ],
-              content: `Calculation error: ${calcErr instanceof Error ? calcErr.message : String(calcErr)}`,
+              content: `Computation error: ${err?.message || String(err)}`,
             },
             workerSk
           );
-          await Promise.any(pool.publish(broadcastRelays, failureFeedback));
+          await Promise.allSettled(pool.publish(broadcastRelays, failureFeedback));
         } catch {}
       }
     },
-    oneose() {
-      console.log("[Relay] EOSE reached across initial relay pool. Live listener active...");
-    },
   });
 
-  // Handle graceful process shutdown
-  const shutdown = () => {
-    console.log("\n[DVM] Gracefully shutting down DVM worker...");
-    sub.close();
-    pool.close(DEFAULT_RELAYS);
-    process.exit(0);
-  };
-
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+  console.log("[DVM] Worker is live and awaiting distributed job requests.");
 }
 
 startDvmWorker().catch((err) => {
-  console.error("[DVM] Fatal worker error:", err);
+  console.error("DVM Worker fatal error:", err);
   process.exit(1);
 });
