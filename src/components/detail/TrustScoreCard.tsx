@@ -80,6 +80,17 @@ export default function TrustScoreCard({ trustData, name, npub = "" }: Props) {
               </p>
             </div>
 
+            {trustData.economicStake && trustData.economicStake.totalValidSats > 0 && (
+              <div className="p-3 bg-amber-500/10 rounded-2xl border border-amber-500/20 flex items-center justify-between text-xs text-amber-200 flex-wrap gap-2">
+                <span className="flex items-center gap-1.5 font-bold">
+                  ⚡ Economic Stake (Sats-Weighted In-Degree):
+                </span>
+                <span className="font-mono font-bold text-amber-300">
+                  {trustData.economicStake.totalValidSats.toLocaleString()} Sats ({trustData.economicStake.validZapsCount} WoT zaps)
+                </span>
+              </div>
+            )}
+
             <div className="p-4 bg-slate-950/40 rounded-2xl border border-slate-800/80 text-xs text-slate-400">
               💡 <strong>Why this matters:</strong> Nostr keypairs are free to generate. This algorithm analyzes NIP-05 DNS signatures, Web-of-Trust graph, and Lightning payment endpoints to prevent Sybil impersonation.
             </div>

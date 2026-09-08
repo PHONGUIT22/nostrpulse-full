@@ -8,8 +8,13 @@ import {
   WebOfTrustDistanceResult 
 } from "@/lib/wot";
 
+import {
+  fetchEconomicStake,
+  EconomicStakeResult,
+} from "@/lib/economic-stake";
+
 export { fetchNostrProfile, DEFAULT_RELAYS };
-export type { NostrProfile, WebOfTrustDistanceResult };
+export type { NostrProfile, WebOfTrustDistanceResult, EconomicStakeResult };
 
 export interface TrustScoreBreakdownItem {
   label: string;
@@ -32,6 +37,7 @@ export interface TrustScoreResult {
   wotScore: number;
   wotDistance: 0 | 1 | 2 | 3;
   wotDetails?: WebOfTrustDistanceResult;
+  economicStake?: EconomicStakeResult;
   sybilResistanceLevel: "High" | "Medium" | "Low" | "Vulnerable";
   breakdown: TrustScoreBreakdownItem[];
 }
@@ -39,7 +45,8 @@ export interface TrustScoreResult {
 export function calculateTrustScore(
   profile: NostrProfile | null,
   nip05Result?: Nip05Result,
-  wotResult?: WebOfTrustDistanceResult
+  wotResult?: WebOfTrustDistanceResult,
+  economicStakeResult?: EconomicStakeResult
 ): TrustScoreResult {
   // 1. Resolve NIP-05 identifier
   const resolvedNip05: Nip05Result = nip05Result || {
@@ -128,22 +135,54 @@ export function calculateTrustScore(
   });
 
   // =========================================================================
-  // Pillar 3: Lightning Value-4-Value Payment Endpoint (Max: 20 pts)
+  // Pillar 3: Lightning Value-4-Value & Economic Stake (Max: 20 pts)
   // =========================================================================
   const hasLud16 = Boolean(profile.lud16 && profile.lud16.includes("@"));
-  const lud16Points = hasLud16 ? 20 : 0;
+  let lud16Points = 0;
+  let lud16Desc = "";
+
+  if (economicStakeResult) {
+    // 10 pts for valid payment endpoint + up to 10 pts for verified WoT Economic Stake
+    const endpointBase = hasLud16 ? 10 : 0;
+    const stakePoints = economicStakeResult.economicPoints; // min(10, round(log10(sats+1)*K))
+    lud16Points = Math.min(20, endpointBase + stakePoints);
+
+    const validSats = economicStakeResult.totalValidSats;
+    const validCount = economicStakeResult.validZapsCount;
+    const filteredCount = economicStakeResult.filteredSybilZapsCount;
+    const filteredSats = economicStakeResult.totalFilteredSats;
+
+    if (hasLud16) {
+      lud16Desc = `Active Lightning Address (${profile.lud16})`;
+      if (validSats > 0) {
+        lud16Desc += ` • ${validSats.toLocaleString()} Sats received from ${validCount} verified WoT sender${validCount > 1 ? "s" : ""} (Economic Stake: +${stakePoints} pts)`;
+      } else {
+        lud16Desc += " • Awaiting verified WoT incoming zaps";
+      }
+      if (filteredCount > 0) {
+        lud16Desc += ` (${filteredCount} Sybil zap${filteredCount > 1 ? "s" : ""} / ${filteredSats.toLocaleString()} Sats filtered out)`;
+      }
+    } else {
+      lud16Desc = "No Lightning address linked (Cannot send or receive value)";
+    }
+  } else {
+    // Synchronous fallback when live zap receipts are not queried
+    lud16Points = hasLud16 ? 20 : 0;
+    lud16Desc = hasLud16
+      ? `Active Lightning Payment Address (${profile.lud16}) configured for Zaps`
+      : "No Lightning address linked (Cannot send or receive value)";
+  }
+
   rawScore += lud16Points;
 
   breakdown.push({
-    label: "Lightning Value-4-Value (LUD-16 / NIP-57)",
+    label: "Lightning V4V & Economic Stake",
     category: "Lightning V4V",
     points: lud16Points,
     maxPoints: 20,
-    passed: hasLud16,
-    sybilRiskLevel: hasLud16 ? "Low" : "Moderate",
-    description: hasLud16
-      ? `Active Lightning Payment Address (${profile.lud16}) configured for Zaps`
-      : "No Lightning address linked (Cannot send or receive value)",
+    passed: lud16Points >= 10,
+    sybilRiskLevel: lud16Points >= 10 ? "Low" : "Moderate",
+    description: lud16Desc,
   });
 
   // =========================================================================
@@ -317,29 +356,37 @@ export function calculateTrustScore(
     wotScore: wotPoints,
     wotDistance: resolvedWot.distance,
     wotDetails: resolvedWot,
+    economicStake: economicStakeResult,
     sybilResistanceLevel,
     breakdown,
   };
 }
 
 /**
- * Asynchronously calculates the Trust Score with multi-hop graph resolution.
- * Resolves Hop 0 and Hop 1 via in-memory snapshot, and queries relays for Hop 2
- * transitive trust (enforcing <= 3000ms timeout via Promise.race).
+ * Asynchronously calculates the Trust Score with multi-hop graph resolution and Economic Stake zaps.
+ * Resolves Hop 0 and Hop 1 via in-memory snapshot, and queries relays in parallel for:
+ * - Hop 2 transitive trust
+ * - Kind 9735 Zap receipts for Sats-Weighted In-Degree (Economic Stake)
+ * (enforcing <= 3000ms timeout via Promise.race).
  *
  * @param profile - Nostr profile
  * @param nip05Result - Optional pre-verified NIP-05 result
- * @param options - Relay query options for Hop 2
+ * @param options - Relay query options and kFactor
  */
 export async function calculateTrustScoreAsync(
   profile: NostrProfile | null,
   nip05Result?: Nip05Result,
-  options?: { relays?: string[]; timeoutMs?: number }
+  options?: { relays?: string[]; timeoutMs?: number; kFactor?: number }
 ): Promise<TrustScoreResult> {
   if (!profile || !profile.pubkey) {
     return calculateTrustScore(profile, nip05Result);
   }
 
-  const wotResult = await resolveWebOfTrustDistance(profile.pubkey, options);
-  return calculateTrustScore(profile, nip05Result, wotResult);
+  // Query multi-hop WoT and Economic Stake in parallel with 3s timeout
+  const [wotResult, economicStakeResult] = await Promise.all([
+    resolveWebOfTrustDistance(profile.pubkey, options),
+    fetchEconomicStake(profile.pubkey, options),
+  ]);
+
+  return calculateTrustScore(profile, nip05Result, wotResult, economicStakeResult);
 }
