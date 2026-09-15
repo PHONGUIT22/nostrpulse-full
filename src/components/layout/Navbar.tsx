@@ -3,13 +3,15 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Search, Key, Scale, Loader2, Zap, Bot } from "lucide-react";
+import { Search, Key, Scale, Loader2, Zap, Bot, Cpu } from "lucide-react";
 import { resolveNostrSearch } from "@/lib/search";
 import NostrLoginButton from "@/components/layout/NostrLoginButton";
+import ConnectMcpModal from "@/components/mcp/ConnectMcpModal";
 
 export default function Navbar() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearching, setIsSearching] = useState(false);
+  const [isMcpModalOpen, setIsMcpModalOpen] = useState(false);
   const router = useRouter();
 
   const handleSearch = async (e: React.FormEvent) => {
@@ -80,6 +82,16 @@ export default function Navbar() {
             </Link>
           </nav>
 
+          <button
+            type="button"
+            onClick={() => setIsMcpModalOpen(true)}
+            className="hidden sm:inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-emerald-400 font-bold px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-full transition-all text-xs sm:text-sm border border-slate-700 shadow-xs cursor-pointer"
+            title="Connect MCP to Cursor or Claude Desktop"
+          >
+            <Cpu className="w-4 h-4 text-emerald-400" />
+            <span className="hidden md:inline">Connect</span> MCP
+          </button>
+
           <Link
             href="/agent"
             className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-full transition-all text-xs sm:text-sm border border-emerald-200 shadow-xs flex items-center gap-1.5"
@@ -101,6 +113,8 @@ export default function Navbar() {
         </div>
 
       </div>
+
+      <ConnectMcpModal isOpen={isMcpModalOpen} onClose={() => setIsMcpModalOpen(false)} />
     </header>
   );
 }

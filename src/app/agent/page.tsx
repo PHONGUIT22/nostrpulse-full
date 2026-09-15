@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import MachineSpenderBot from "@/components/ai/MachineSpenderBot";
+import ConnectMcpCard from "@/components/mcp/ConnectMcpCard";
 import { Sparkles, Coins, Zap, ShieldCheck } from "lucide-react";
 
 export const metadata: Metadata = {
@@ -44,6 +45,9 @@ export default function AgentPage() {
             </span>
           </div>
         </div>
+
+        {/* Connect MCP Server Banner/Card */}
+        <ConnectMcpCard />
 
         {/* Machine Spender Bot Component */}
         <MachineSpenderBot />
