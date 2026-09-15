@@ -1,0 +1,256 @@
+// src/lib/tool-registry.ts
+/**
+ * DVMCP Tool Registry & JSON Schema to Zod Converter
+ *
+ * Provides utilities to translate JSON Schema definitions (e.g. from DVM Worker NIP-89
+ * announcements or DVMCP compute discovery) into Zod raw shapes (z.ZodRawShape).
+ * This enables dynamic runtime validation when registering tools into @modelcontextprotocol/sdk
+ * McpServer instances or Vercel AI SDK agents.
+ */
+
+import { z } from "zod";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+
+export interface ToolPropertySchema {
+  type?: string;
+  description?: string;
+  enum?: (string | number | boolean)[];
+  items?: ToolPropertySchema;
+  properties?: Record<string, ToolPropertySchema>;
+  [key: string]: any;
+}
+
+export interface ToolInputSchema {
+  type?: "object" | string;
+  properties?: Record<string, ToolPropertySchema>;
+  required?: string[];
+  description?: string;
+  [key: string]: any;
+}
+
+export interface Tool {
+  name: string;
+  description: string;
+  inputSchema: ToolInputSchema;
+  dvmPubkey?: string;
+  supportedKinds?: number[];
+  relays?: string[];
+  execute?: (args: Record<string, any>) => Promise<any>;
+}
+
+/**
+ * Converts a JSON Schema input definition to a Zod raw shape (z.ZodRawShape).
+ * If the schema has no properties, safely returns an optional object placeholder.
+ *
+ * @param schema - JSON Schema definition for tool inputs
+ * @returns z.ZodRawShape compatible with McpServer and z.object()
+ */
+export function mapJsonSchemaToZod(schema?: ToolInputSchema | null): z.ZodRawShape {
+  if (!schema || !schema.properties || Object.keys(schema.properties).length === 0) {
+    return { _: z.object({}).optional() };
+  }
+
+  const properties: Record<string, z.ZodType> = {};
+
+  for (const [key, prop] of Object.entries(schema.properties)) {
+    if (typeof prop === "object" && prop && "type" in prop) {
+      let zodType: z.ZodType;
+
+      switch (prop.type) {
+        case "string":
+          if (Array.isArray(prop.enum) && prop.enum.length > 0) {
+            zodType = z.enum(prop.enum.map(String) as [string, ...string[]]);
+          } else {
+            zodType = z.string();
+          }
+          break;
+        case "number":
+          zodType = z.number();
+          break;
+        case "integer":
+          zodType = z.number().int();
+          break;
+        case "boolean":
+          zodType = z.boolean();
+          break;
+        case "array":
+          zodType = z.array(z.any());
+          break;
+        case "object":
+          zodType = z.record(z.string(), z.any());
+          break;
+        default:
+          zodType = z.any();
+      }
+
+      if (typeof prop.description === "string" && prop.description.trim()) {
+        zodType = zodType.describe(prop.description.trim());
+      }
+
+      properties[key] =
+        Array.isArray(schema.required) && schema.required.includes(key)
+          ? zodType
+          : zodType.optional();
+    }
+  }
+
+  return properties as z.ZodRawShape;
+}
+
+/**
+ * ToolRegistry manages tool registrations and binds DVM Worker capabilities
+ * to runtime Model Context Protocol (MCP) servers and AI SDK agents.
+ */
+export class ToolRegistry {
+  private tools: Map<string, Tool> = new Map();
+
+  /**
+   * Internal converter from JSON Schema to ZodRawShape (extracted from dvmcp-discovery)
+   */
+  private mapJsonSchemaToZod(schema: Tool["inputSchema"]): z.ZodRawShape {
+    return mapJsonSchemaToZod(schema);
+  }
+
+  /**
+   * Registers an arbitrary Tool into the registry
+   */
+  public registerTool(tool: Tool): void {
+    this.tools.set(tool.name, tool);
+  }
+
+  /**
+   * Retrieves a registered tool by name
+   */
+  public getTool(name: string): Tool | undefined {
+    return this.tools.get(name);
+  }
+
+  /**
+   * Returns all registered tools
+   */
+  public getAllTools(): Tool[] {
+    return Array.from(this.tools.values());
+  }
+
+  /**
+   * Converts a DVM Worker announcement (NIP-89) into a validated registered Tool.
+   * Uses mapJsonSchemaToZod to ensure schema compatibility with MCP runtime.
+   */
+  public registerDvmWorkerCapability(announcement: {
+    name: string;
+    identifier?: string;
+    about?: string;
+    pubkey: string;
+    supportedKinds?: number[];
+    categories?: string[];
+    relays?: string[];
+    inputSchema?: ToolInputSchema;
+    execute?: (args: Record<string, any>) => Promise<any>;
+  }): Tool {
+    const toolName = (announcement.identifier || announcement.name)
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, "_");
+
+    // Standard fallback schema for Nostr DVM analytics if none provided
+    const fallbackSchema: ToolInputSchema = {
+      type: "object",
+      properties: {
+        pubkey: {
+          type: "string",
+          description: "Nostr public key (hex or npub) to query",
+        },
+        category: {
+          type: "string",
+          description: "Analysis category (e.g. zap-analytics, reputation)",
+        },
+      },
+      required: ["pubkey"],
+    };
+
+    const inputSchema = announcement.inputSchema || fallbackSchema;
+
+    const tool: Tool = {
+      name: toolName,
+      description:
+        announcement.about ||
+        `DVM Analytics Tool powered by Nostr DVM ${announcement.pubkey.slice(0, 8)}...`,
+      inputSchema,
+      dvmPubkey: announcement.pubkey,
+      supportedKinds: announcement.supportedKinds,
+      relays: announcement.relays,
+      execute: announcement.execute,
+    };
+
+    this.registerTool(tool);
+    return tool;
+  }
+
+  /**
+   * Binds all registered tools to an MCP Server instance.
+   * Uses mapJsonSchemaToZod to pass the required Zod raw shape for parameter validation.
+   *
+   * @param server - McpServer instance from @modelcontextprotocol/sdk
+   */
+  public registerToMcpServer(server: McpServer): void {
+    for (const tool of this.tools.values()) {
+      const zodRawShape = this.mapJsonSchemaToZod(tool.inputSchema);
+
+      server.tool(
+        tool.name,
+        tool.description,
+        zodRawShape,
+        async (args: Record<string, any>) => {
+          try {
+            if (tool.execute) {
+              const result = await tool.execute(args);
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: typeof result === "string" ? result : JSON.stringify(result, null, 2),
+                  },
+                ],
+              };
+            }
+
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    tool: tool.name,
+                    status: "dispatched",
+                    args,
+                    dvmPubkey: tool.dvmPubkey,
+                  }),
+                },
+              ],
+            };
+          } catch (err: any) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `Error executing tool ${tool.name}: ${err?.message || String(err)}`,
+                },
+              ],
+              isError: true,
+            };
+          }
+        }
+      );
+    }
+  }
+
+  /**
+   * Generates a Zod object validator from a tool's input schema
+   */
+  public getZodValidator(toolName: string): z.ZodObject<any> | null {
+    const tool = this.tools.get(toolName);
+    if (!tool) return null;
+    return z.object(this.mapJsonSchemaToZod(tool.inputSchema));
+  }
+}
+
+// Global default singleton registry instance
+export const globalToolRegistry = new ToolRegistry();
