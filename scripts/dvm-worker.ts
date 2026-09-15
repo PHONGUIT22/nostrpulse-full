@@ -10,6 +10,8 @@ import {
   getTrustEdgesFromDb,
 } from "../src/lib/db";
 import { normalizeToHex } from "../src/lib/nostr";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { globalToolRegistry } from "../src/lib/tool-registry";
 
 // Auto-load .env.local or .env if present
 try {
@@ -66,9 +68,28 @@ async function startDvmWorker() {
   const pool = new SimplePool();
   const processedJobs = new Set<string>();
 
-  // 1. Broadcast NIP-89 DVM Announcement (Kind 31990)
+  // 1. Broadcast NIP-89 DVM Announcement (Kind 31990) with JSON Schema
   try {
     console.log("[DVM] Publishing NIP-89 DVM Announcement (Kind 31990)...");
+    const dvmSchema = {
+      type: "object",
+      properties: {
+        pubkey: {
+          type: "string",
+          description: "Target Nostr public key (hex or npub) to query",
+        },
+        category: {
+          type: "string",
+          description: "Analytics category: zap-analytics, reputation, or trust-score",
+        },
+        timeframe: {
+          type: "string",
+          description: "Historical timeframe: all-time, 1y, or 30d",
+        },
+      },
+      required: ["pubkey"],
+    };
+
     const announcement = await publishDvmAnnouncement({
       identifier: "nostrpulse-analytics-dvm",
       name: "NostrPulse Analytics & Reputation DVM",
@@ -77,10 +98,44 @@ async function startDvmWorker() {
       categories: ["zap-analytics", "reputation", "trust-score"],
       relays: RELAYS,
       secretKey: workerSk,
+      inputSchema: dvmSchema,
     });
     console.log(`[DVM] NIP-89 Announcement broadcasted successfully (ID: ${announcement.id.slice(0, 10)}...)`);
+
+    // 1b. Bind DVM compute capability to MCP Server using mapJsonSchemaToZod
+    const mcpServer = new McpServer({
+      name: "nostrpulse-dvm-mcp",
+      version: "1.0.0",
+    });
+
+    globalToolRegistry.registerDvmWorkerCapability({
+      identifier: "dvm_analytics",
+      name: "NostrPulse Analytics & Reputation DVM",
+      about: "Query deep Lightning zap analytics and reputation metrics for any Nostr identity",
+      pubkey: workerPk,
+      supportedKinds: [5300, 5000],
+      categories: ["zap-analytics", "reputation", "trust-score"],
+      relays: RELAYS,
+      inputSchema: dvmSchema,
+      execute: async (args) => {
+        const { hex } = normalizeToHex(args.pubkey || "");
+        const [zapTotals, creator] = await Promise.all([
+          getZapTotalsFromDb(hex),
+          getCreatorFromDb(hex),
+        ]);
+        return {
+          pubkey: hex,
+          totalSats: zapTotals?.total_sats || 0,
+          validSenderSats: zapTotals?.valid_sender_sats || 0,
+          trustScore: creator?.score || 70,
+        };
+      },
+    });
+
+    globalToolRegistry.registerToMcpServer(mcpServer);
+    console.log("[MCP] Successfully converted DVM JSON Schema to Zod and registered tool 'dvm_analytics' to McpServer!");
   } catch (err) {
-    console.warn("[DVM] Failed to publish NIP-89 announcement:", err);
+    console.warn("[DVM] Failed to publish NIP-89 announcement or register MCP tool:", err);
   }
 
   // 2. Subscribe to Kind 5000 & 5300 Job Request events

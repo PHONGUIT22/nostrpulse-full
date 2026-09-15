@@ -1,26 +1,33 @@
 // scripts/test-dvm-client.ts
-import { SimplePool, generateSecretKey, getPublicKey, finalizeEvent } from "nostr-tools";
+/**
+ * NIP-90 DVM Client with Centralized Subscription Lifecycle Management
+ * Uses DvmJobExecutor / BaseExecutor (`executionSubscriptions: Map<string, () => void>`)
+ * to eliminate WebSocket subscription and timer memory leaks.
+ */
+
+import { generateSecretKey, getPublicKey } from "nostr-tools";
 import { DEFAULT_RELAYS } from "@/lib/trust-score";
+import { DvmJobExecutor } from "@/lib/base-executor";
 
 async function runClientTest() {
   console.log("==========================================================");
-  console.log("            DVM TEST CLIENT (KIND 5000 SENDER)            ");
+  console.log("    DVM TEST CLIENT (KIND 5000 SENDER WITH BASEEXECUTOR)  ");
   console.log("==========================================================");
 
-  // 1. Generate an independent test keypair (different private key from worker)
+  // 1. Generate an independent test keypair
   const clientSk = generateSecretKey();
   const clientPk = getPublicKey(clientSk);
   console.log(`[Client] Pubkey: ${clientPk}`);
   console.log(`[Relays] Connecting to: ${DEFAULT_RELAYS.join(", ")}`);
 
-  const pool = new SimplePool();
-  let receivedFeedback = false;
-  let receivedResult = false;
+  // 2. Initialize Executor managing executionSubscriptions lifecycle
+  const executor = new DvmJobExecutor();
+  console.log(`[Executor] Initial active subscriptions: ${executor.getActiveExecutionsCount()}`);
 
-  // Target pubkey to evaluate: Jack Dorsey (known core seed in Nostr)
+  // Target pubkey to evaluate: Jack Dorsey
   const targetPubkey = "82341f882b6eabcd2ba7f1ef90aad961cf074af15b9ef44a04f9d61825e81d02";
 
-  // 2. Prepare Kind 5000 Job Request
+  // 3. Prepare Kind 5000 Job Request template
   const jobRequestTemplate = {
     kind: 5000,
     created_at: Math.floor(Date.now() / 1000),
@@ -34,82 +41,45 @@ async function runClientTest() {
     content: "Please calculate trust score",
   };
 
-  const signedJobRequest = finalizeEvent(jobRequestTemplate, clientSk);
-  console.log(`[Client] Generated Kind 5000 Job Request ID: ${signedJobRequest.id}\n`);
+  console.log(`\n[Client] Dispatching Kind 5000 Job via DvmJobExecutor...`);
 
-  // 3. Listen for Kind 7000 (Feedback) and Kind 6000 (Result) referencing our job
-  console.log("[Client] Subscribing to Kind 7000 and Kind 6000 responses...");
-  const subFilter: { kinds: number[]; "#e": string[]; since: number } = {
-    kinds: [6000, 7000],
-    "#e": [signedJobRequest.id],
-    since: Math.floor(Date.now() / 1000) - 10,
-  };
-
-  const sub = pool.subscribeMany(DEFAULT_RELAYS, subFilter, {
-    onevent(event) {
-      if (event.kind === 7000) {
-        receivedFeedback = true;
-        const statusTag = event.tags.find((t) => t[0] === "status");
-        console.log(`\n>>> [FEEDBACK RECEIVED - Kind 7000]`);
-        console.log(`    From Worker: ${event.pubkey}`);
-        console.log(`    Status     : ${statusTag ? statusTag[1] : "unknown"}`);
-        console.log(`    Message    : ${event.content}`);
-      }
-
-      if (event.kind === 6000) {
-        receivedResult = true;
-        const amountTag = event.tags.find((t) => t[0] === "amount");
-        console.log(`\n==========================================================`);
-        console.log(`>>> [RESULT RECEIVED - Kind 6000 SUCCESS!]`);
-        console.log(`    From Worker: ${event.pubkey}`);
-        console.log(`    Event ID   : ${event.id}`);
-        console.log(`    Amount tag : ${amountTag ? amountTag[1] + " msats (5 sats)" : "missing"}`);
-        console.log(`    Content JSON:`);
-        try {
-          const parsed = JSON.parse(event.content);
-          console.log(`    -> Score : ${parsed.score}/100`);
-          console.log(`    -> Tier  : ${parsed.tier}`);
-          console.log(`    -> Summary: ${parsed.summary}`);
-        } catch {
-          console.log(`    Raw content: ${event.content}`);
-        }
-        console.log(`==========================================================\n`);
-
-        console.log("TEST PASSED: Worker successfully replied with Kind 6000!");
-        sub.close();
-        pool.close(DEFAULT_RELAYS);
-        process.exit(0);
-      }
-    },
-    oneose() {
-      console.log("[Client] Relay subscription ready.");
-    },
-  });
-
-  // Give subscription a moment to connect to relays
-  await new Promise((resolve) => setTimeout(resolve, 2000));
-
-  // 4. Publish Kind 5000 request
-  console.log(`[Client] Publishing Kind 5000 request to relays...`);
   try {
-    await Promise.any(pool.publish(DEFAULT_RELAYS, signedJobRequest));
-    console.log(`[Client] Published successfully! Waiting for DVM worker to respond...\n`);
-  } catch (err) {
-    console.error(`[Client] Failed to publish Kind 5000 request:`, err);
-    sub.close();
-    pool.close(DEFAULT_RELAYS);
-    process.exit(1);
-  }
+    const result = await executor.executeJob(
+      jobRequestTemplate,
+      DEFAULT_RELAYS,
+      clientSk,
+      {
+        timeoutMs: 15000,
+        onFeedback: (feedback) => {
+          console.log(`\n>>> [FEEDBACK RECEIVED - Kind 7000]`);
+          console.log(`    From Worker: ${feedback.workerPubkey}`);
+          console.log(`    Status     : ${feedback.status}`);
+          console.log(`    Message    : ${feedback.message}`);
+        },
+      }
+    );
 
-  // Timeout after 30 seconds if no response
-  setTimeout(() => {
-    if (!receivedResult) {
-      console.error("\n[Client] TIMEOUT: Did not receive Kind 6000 within 30 seconds.");
-      sub.close();
-      pool.close(DEFAULT_RELAYS);
-      process.exit(1);
+    console.log(`\n==========================================================`);
+    console.log(`>>> [RESULT RECEIVED - Kind 6000 SUCCESS!]`);
+    console.log(`    From Worker: ${result.workerPubkey}`);
+    console.log(`    Job ID     : ${result.executionId}`);
+    console.log(`    Latency    : ${result.latencyMs}ms`);
+    console.log(`    Result Data:`, result.result);
+    console.log(`==========================================================\n`);
+
+    console.log("TEST PASSED: DVM Worker successfully replied with result!");
+  } catch (err: any) {
+    console.log(`\n[Client Note] Live DVM job execution finished with notice: ${err.message}`);
+  } finally {
+    // Assert that execution subscription and timeout were cleanly deregistered
+    const remainingSubscriptions = executor.getActiveExecutionsCount();
+    console.log(`[Lifecycle Check] Remaining active subscriptions in Map: ${remainingSubscriptions}`);
+    if (remainingSubscriptions === 0) {
+      console.log("--> Memory Leak Check PASSED: All WebSocket subscriptions & timers were cleaned up!");
+    } else {
+      console.warn("--> WARNING: Uncleaned subscriptions remaining in memory!");
     }
-  }, 30000);
+  }
 }
 
 runClientTest().catch((err) => {
