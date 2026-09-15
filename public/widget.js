@@ -693,7 +693,7 @@
     });
   }
 
-  // Register Web Component <nutzap-me> and <nutzap-widget>
+  // Register Web Component <nutzap-me>
   if (typeof customElements !== "undefined" && !customElements.get("nutzap-me")) {
     class NutZapElement extends HTMLElement {
       connectedCallback() {
@@ -717,9 +717,32 @@
     }
 
     customElements.define("nutzap-me", NutZapElement);
-    if (!customElements.get("nutzap-widget")) {
-      customElements.define("nutzap-widget", NutZapElement);
+  }
+
+  // Register alias Web Component <nutzap-widget>
+  if (typeof customElements !== "undefined" && !customElements.get("nutzap-widget")) {
+    class NutZapWidgetElement extends HTMLElement {
+      connectedCallback() {
+        if (this.hasAttribute("data-np-rendered")) return;
+        this.setAttribute("data-np-rendered", "true");
+
+        const config = {
+          npub: this.getAttribute("npub") || this.getAttribute("data-npub") || "",
+          name: this.getAttribute("name") || this.getAttribute("data-name") || "Creator",
+          label: this.getAttribute("label") || this.getAttribute("data-label") || "NutZap Me",
+          amount: Number(this.getAttribute("amount") || this.getAttribute("data-amount")) || 100,
+          mint: this.getAttribute("mint") || this.getAttribute("data-mint") || "https://testnut.cashu.space",
+          theme: this.getAttribute("theme") || this.getAttribute("data-theme") || "dark",
+        };
+
+        if (config.npub) {
+          const btn = createNutZapButton(config);
+          this.appendChild(btn);
+        }
+      }
     }
+
+    customElements.define("nutzap-widget", NutZapWidgetElement);
   }
 
   // Global API exposure for programmatic usage
