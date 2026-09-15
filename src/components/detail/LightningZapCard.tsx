@@ -16,7 +16,9 @@ import {
   ClipboardPaste,
   Server,
   Settings2,
-  ChevronDown
+  ChevronDown,
+  Eye,
+  EyeOff
 } from "lucide-react";
 import { generateSecretKey, finalizeEvent } from "nostr-tools/pure";
 import { nip19 } from "nostr-tools";
@@ -82,6 +84,9 @@ export default function LightningZapCard({
   const [isCustomMintInput, setIsCustomMintInput] = useState<boolean>(false);
   const [customMintUrl, setCustomMintUrl] = useState<string>("");
   const [isMintSettingsOpen, setIsMintSettingsOpen] = useState<boolean>(false);
+
+  // NIP-59 Gift Wrap Privacy toggle
+  const [giftWrapEnabled, setGiftWrapEnabled] = useState<boolean>(false);
 
   // Common States
   const [sats, setSats] = useState<number>(100);
@@ -673,11 +678,53 @@ export default function LightningZapCard({
               )}
             </div>
 
-            {/* Info Banner */}
-            <div className="bg-emerald-950/30 border border-emerald-800/40 p-4 rounded-2xl flex items-start gap-3">
-              <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-              <div className="text-xs text-slate-300 leading-relaxed">
-                <span className="font-bold text-emerald-400">Untraceable Chaumian eCash:</span> Encrypted end-to-end with NIP-44. Token is delivered privately via Nostr, even if the creator&apos;s Lightning node is offline.
+            {/* Info Banner + NIP-59 Gift Wrap Privacy Toggle */}
+            <div className="bg-emerald-950/30 border border-emerald-800/40 p-4 rounded-2xl space-y-3">
+              <div className="flex items-start gap-3">
+                <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                <div className="text-xs text-slate-300 leading-relaxed">
+                  <span className="font-bold text-emerald-400">Untraceable Chaumian eCash:</span> Encrypted end-to-end with {giftWrapEnabled ? "NIP-59 Gift Wrap" : "NIP-44"}. Token is delivered privately via Nostr, even if the creator&apos;s Lightning node is offline.
+                </div>
+              </div>
+
+              {/* NIP-59 Gift Wrap Toggle */}
+              <div className="flex items-center justify-between gap-3 bg-slate-950/60 border border-slate-800 rounded-xl p-3">
+                <div className="flex items-start gap-2.5 min-w-0">
+                  {giftWrapEnabled ? (
+                    <EyeOff className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
+                  ) : (
+                    <Eye className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                  )}
+                  <div className="min-w-0">
+                    <span className={`text-xs font-bold block ${giftWrapEnabled ? "text-purple-300" : "text-slate-300"}`}>
+                      Private Gift Wrap (NIP-59)
+                    </span>
+                    <span className="text-[11px] text-slate-400 leading-tight block mt-0.5">
+                      {giftWrapEnabled
+                        ? "Sender & recipient identities are hidden on Nostr relays using a random ephemeral key. Maximum privacy."
+                        : "Standard NIP-44 encryption. Enable Gift Wrap to hide sender & recipient with ephemeral keys."}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setGiftWrapEnabled(!giftWrapEnabled)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-200 cursor-pointer ${
+                    giftWrapEnabled
+                      ? "bg-purple-600 border-purple-500"
+                      : "bg-slate-700 border-slate-600"
+                  }`}
+                  role="switch"
+                  aria-checked={giftWrapEnabled}
+                  aria-label="Toggle NIP-59 Gift Wrap Privacy"
+                >
+                  <span
+                    className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transform transition-transform duration-200 ${
+                      giftWrapEnabled ? "translate-x-5.5" : "translate-x-0.5"
+                    }`}
+                  />
+                </button>
               </div>
             </div>
 
@@ -888,6 +935,11 @@ export default function LightningZapCard({
               <>
                 <Wallet className="w-4 h-4 text-amber-400" />
                 <span>NIP-57 Verified • Lightning Network Enabled</span>
+              </>
+            ) : giftWrapEnabled ? (
+              <>
+                <EyeOff className="w-4 h-4 text-purple-400" />
+                <span>NIP-59 Gift Wrap Enabled • NIP-61 eCash • Ephemeral Key Privacy</span>
               </>
             ) : (
               <>
