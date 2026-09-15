@@ -386,5 +386,37 @@ export async function fetchEconomicStake(
     options?.timeoutMs ?? 3000
   );
 
+  // If relay WebSocket returned no receipts (timeout/disconnected), fallback to SQLite DB cache
+  // to prevent trust scores from dropping to 0 for well-known anchors
+  if (receipts.length === 0) {
+    try {
+      const { getZapTotalsFromDb } = await import("@/lib/db");
+      const dbRow = await getZapTotalsFromDb(hex);
+      if (dbRow && (dbRow.total_sats > 0 || dbRow.valid_sender_sats > 0)) {
+        const kFactor = options?.kFactor ?? 2.0;
+        const validSats = dbRow.valid_sender_sats || 0;
+        const filteredSats = Math.max(0, (dbRow.total_sats || 0) - validSats);
+        const zapScore = validSats > 0 ? Math.log10(validSats + 1) * kFactor : 0;
+        const economicPoints = Math.min(Math.round(zapScore * 10) / 10, 10);
+
+        return {
+          targetPubkey: hex,
+          totalZapsReceived: 1, // DB aggregate, exact count unavailable
+          validZapsCount: validSats > 0 ? 1 : 0,
+          filteredSybilZapsCount: filteredSats > 0 ? 1 : 0,
+          totalValidSats: validSats,
+          totalFilteredSats: filteredSats,
+          kFactor,
+          zapScore,
+          economicPoints,
+          validSenders: [],
+          filteredSenders: [],
+        };
+      }
+    } catch (dbErr) {
+      console.debug("[EconomicStake] SQLite fallback unavailable:", dbErr);
+    }
+  }
+
   return calculateEconomicStake(hex, receipts, { kFactor: options?.kFactor });
 }
