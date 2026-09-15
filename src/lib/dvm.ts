@@ -20,6 +20,28 @@ import {
   getTrustEdgesFromDb,
   upsertZapTotals,
 } from "@/lib/db";
+import {
+  mapJsonSchemaToZod,
+  ToolRegistry,
+  globalToolRegistry,
+  type ToolInputSchema,
+  type Tool,
+} from "./tool-registry";
+import {
+  BaseExecutor,
+  DvmJobExecutor,
+  globalDvmExecutor,
+} from "./base-executor";
+
+export {
+  mapJsonSchemaToZod,
+  ToolRegistry,
+  globalToolRegistry,
+  BaseExecutor,
+  DvmJobExecutor,
+  globalDvmExecutor,
+};
+export type { ToolInputSchema, Tool };
 
 // Major relays for NIP-89/NIP-90 DVM discovery & job dispatching
 export const DVM_DEFAULT_RELAYS = MAJOR_INDEXER_RELAYS;
@@ -70,6 +92,7 @@ export interface DvmAnnouncement {
   supportedKinds: number[];
   categories: string[];
   relays: string[];
+  inputSchema?: ToolInputSchema;
 }
 
 /**
@@ -106,6 +129,7 @@ export async function publishDvmAnnouncement(params: {
   categories?: string[];
   relays?: string[];
   secretKey?: Uint8Array | string;
+  inputSchema?: ToolInputSchema;
 }): Promise<Event> {
   const identifier = params.identifier || "nostrpulse-analytics-dvm";
   const name = params.name || "NostrPulse Analytics & Reputation DVM";
@@ -123,11 +147,31 @@ export async function publishDvmAnnouncement(params: {
     ["relays", ...targetRelays],
   ];
 
+  const defaultSchema: ToolInputSchema = {
+    type: "object",
+    properties: {
+      pubkey: {
+        type: "string",
+        description: "Target Nostr public key (hex or npub) to query",
+      },
+      category: {
+        type: "string",
+        description: "Analysis category (zap-analytics, reputation, trust-score)",
+      },
+      timeframe: {
+        type: "string",
+        description: "Analysis timeframe (all-time, 1y, 30d)",
+      },
+    },
+    required: ["pubkey"],
+  };
+
   const content = JSON.stringify({
     name,
     about,
     picture: params.picture || "https://api.dicebear.com/7.x/bottts/svg?seed=nostrpulse-dvm",
     lud16,
+    inputSchema: params.inputSchema || defaultSchema,
   });
 
   const template: EventTemplate = {
@@ -196,6 +240,7 @@ export async function discoverDvmAnnouncements(
           supportedKinds,
           categories: evCategories,
           relays: announcedRelays,
+          inputSchema: meta.inputSchema,
         });
       } catch {}
     }
@@ -306,6 +351,7 @@ export async function requestDvmAnalyticsWithFallback(
       try {
         if (sub) sub.close();
       } catch {}
+      globalDvmExecutor.cleanupExecution(signedJob.id);
     };
 
     try {
@@ -362,6 +408,13 @@ export async function requestDvmAnalyticsWithFallback(
           },
         }
       );
+
+      // Register into global execution manager to prevent WebSocket leaks
+      globalDvmExecutor.registerExecution(signedJob.id, () => {
+        try {
+          if (sub) sub.close();
+        } catch {}
+      });
     } catch (subErr) {
       cleanup();
       reject(subErr);
@@ -379,6 +432,7 @@ export async function requestDvmAnalyticsWithFallback(
   // Timeout promise that triggers local database fallback
   const timeoutPromise = new Promise<DvmAnalyticsResponse>((resolve) => {
     setTimeout(async () => {
+      globalDvmExecutor.cleanupExecution(signedJob.id);
       const fallbackData = await getLocalDatabaseAnalytics(targetHex);
       fallbackData.jobId = signedJob.id;
       fallbackData.reason = `DVM response timed out after ${timeoutMs}ms. Fallback to local SQLite database.`;

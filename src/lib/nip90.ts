@@ -8,7 +8,16 @@ const RESPONSIVE_RELAYS_ALLOWLIST = new Set<string>([
   "wss://nos.lol",
 ]);
 
-export { DEFAULT_RELAYS };
+import {
+  mapJsonSchemaToZod,
+  ToolRegistry,
+  globalToolRegistry,
+  type ToolInputSchema,
+  type Tool,
+} from "./tool-registry";
+
+export { DEFAULT_RELAYS, mapJsonSchemaToZod, ToolRegistry, globalToolRegistry };
+export type { ToolInputSchema, Tool };
 
 /**
  * Filters requested relays against the responsive allowlist.
