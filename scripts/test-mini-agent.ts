@@ -8,9 +8,13 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import OpenAI from "openai";
 import path from "path";
 
+const apiKey =
+  process.env.GEMINI_API_KEY ||
+  process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+
 // 1. Configure Gemini via Google AI Studio's OpenAI-compatible endpoint
 const gemini = new OpenAI({
-  apiKey: process.env.GEMINI_API_KEY || "AIzaSy...",
+  apiKey: apiKey || "dummy-key",
   baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
 });
 
@@ -42,6 +46,18 @@ async function callGeminiWithFallback(
 }
 
 async function main() {
+  // Graceful guard check for Gemini API key
+  const activeKey =
+    process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+
+  if (!activeKey || activeKey === "AIzaSy..." || activeKey.trim() === "") {
+    console.log("\n⚠️  [SKIP] GEMINI_API_KEY was not found in environment (.env / .env.local).");
+    console.log("👉 This is a live autonomous LLM Agent end-to-end test.");
+    console.log("👉 To run, obtain a free API key at: https://aistudio.google.com");
+    console.log("👉 Or run 'npx tsx scripts/test-mcp-stdio.ts' to test all MCP tools directly without an API key.\n");
+    process.exit(0); // Exit gracefully without terminal crash
+  }
+
   console.error(">>> [1] Starting MCP Stdio Client...");
 
   const mcpEntryPath = path.resolve(process.cwd(), "src/mcp-entry.ts");
