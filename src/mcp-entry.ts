@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * src/mcp-entry.ts
  *

@@ -1,7 +1,14 @@
 {
-  "name": "nostrpulse",
-  "version": "0.1.0",
-  "private": true,
+  "name": "nostrpulse-mcp",
+  "version": "1.0.2",
+  "description": "Autonomous Payment & Sybil-Resistant Trust Layer for AI Agents via MCP",
+  "main": "./dist/mcp-entry.js",
+  "bin": {
+    "nostrpulse-mcp": "dist/mcp-entry.js"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -9,7 +16,8 @@
     "lint": "eslint",
     "indexer": "tsx scripts/indexer-worker.ts",
     "enrich": "node src/scripts/enrich-creators.mjs",
-    "mcp": "tsx src/mcp-entry.ts"
+    "mcp": "tsx src/mcp-entry.ts",
+    "build:mcp": "tsup src/mcp-entry.ts --format esm --target node20 --clean --banner.js \"#!/usr/bin/env node\""
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.63",
@@ -45,6 +53,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
     "tailwindcss": "^4",
+    "tsup": "^8.5.1",
     "typescript": "^5"
   }
 }
