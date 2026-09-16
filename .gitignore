@@ -47,3 +47,4 @@ nostrpulse.db*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.VSCodeCounters

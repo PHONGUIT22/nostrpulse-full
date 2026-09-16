@@ -1,0 +1,204 @@
+Date : 2026-09-16 11:03:00
+Directory : d:\UIT\NamBonUIT\nostrpulse-full
+Total : 120 files,  217980 codes, 1635 comments, 2217 blanks, all 221832 lines
+
+Languages
++--------------------+------------+------------+------------+------------+------------+
+| language           | files      | code       | comment    | blank      | total      |
++--------------------+------------+------------+------------+------------+------------+
+| JSON               |          7 |    128,861 |          0 |          3 |    128,864 |
+| JavaScript         |         10 |     74,000 |        216 |        217 |     74,433 |
+| TypeScript JSX     |         49 |      7,766 |        384 |        898 |      9,048 |
+| TypeScript         |         45 |      6,895 |      1,035 |      1,024 |      8,954 |
+| Markdown           |          2 |        294 |          0 |         69 |        363 |
+| PostCSS            |          1 |        125 |          0 |          5 |        130 |
+| JSON with Comments |          1 |         34 |          0 |          1 |         35 |
+| XML                |          5 |          5 |          0 |          0 |          5 |
++--------------------+------------+------------+------------+------------+------------+
+
+Directories
++-------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| path                                                                          | files      | code       | comment    | blank      | total      |
++-------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| .                                                                             |        120 |    217,980 |      1,635 |      2,217 |    221,832 |
+| . (Files)                                                                     |         11 |     12,893 |          9 |         96 |     12,998 |
+| components                                                                    |          1 |          2 |          1 |          1 |          4 |
+| components\bounty                                                             |          1 |          2 |          1 |          1 |          4 |
+| dist                                                                          |          4 |     72,555 |         96 |         25 |     72,676 |
+| lib                                                                           |          1 |          1 |          1 |          1 |          3 |
+| public                                                                        |          6 |        677 |         32 |         57 |        766 |
+| scripts                                                                       |         16 |      1,606 |        183 |        308 |      2,097 |
+| src                                                                           |         81 |    130,246 |      1,313 |      1,729 |    133,288 |
+| src (Files)                                                                   |          1 |        351 |         33 |         33 |        417 |
+| src\app                                                                       |         24 |      2,822 |        151 |        374 |      3,347 |
+| src\app (Files)                                                               |          4 |        353 |          8 |         23 |        384 |
+| src\app\about                                                                 |          1 |        151 |         11 |         16 |        178 |
+| src\app\agent                                                                 |          1 |         48 |          4 |          6 |         58 |
+| src\app\api                                                                   |          9 |        817 |         53 |        107 |        977 |
+| src\app\api\badge                                                             |          1 |         60 |          3 |          8 |         71 |
+| src\app\api\badge\[npub]                                                      |          1 |         60 |          3 |          8 |         71 |
+| src\app\api\bot                                                               |          1 |        307 |         18 |         26 |        351 |
+| src\app\api\creators                                                          |          2 |         84 |          3 |         16 |        103 |
+| src\app\api\creators (Files)                                                  |          1 |         30 |          1 |          4 |         35 |
+| src\app\api\creators\discover                                                 |          1 |         54 |          2 |         12 |         68 |
+| src\app\api\dvm                                                               |          1 |         68 |          2 |         13 |         83 |
+| src\app\api\dvm\analytics                                                     |          1 |         68 |          2 |         13 |         83 |
+| src\app\api\indexer                                                           |          1 |         37 |          1 |          7 |         45 |
+| src\app\api\indexer\run                                                       |          1 |         37 |          1 |          7 |         45 |
+| src\app\api\v1                                                                |          1 |         95 |         17 |         15 |        127 |
+| src\app\api\v1\trust-score                                                    |          1 |         95 |         17 |         15 |        127 |
+| src\app\api\v1\trust-score\[pubkey]                                           |          1 |         95 |         17 |         15 |        127 |
+| src\app\api\widget                                                            |          2 |        166 |          9 |         22 |        197 |
+| src\app\api\widget\claim                                                      |          1 |        110 |          7 |         14 |        131 |
+| src\app\api\widget\quote                                                      |          1 |         56 |          2 |          8 |         66 |
+| src\app\bot                                                                   |          1 |         46 |          3 |          5 |         54 |
+| src\app\bounties                                                              |          1 |        313 |         19 |         37 |        369 |
+| src\app\compare                                                               |          2 |        377 |         22 |         67 |        466 |
+| src\app\compare (Files)                                                       |          1 |        232 |         13 |         40 |        285 |
+| src\app\compare\[pair]                                                        |          1 |        145 |          9 |         27 |        181 |
+| src\app\contact                                                               |          1 |        115 |          2 |         18 |        135 |
+| src\app\p                                                                     |          1 |        234 |         22 |         37 |        293 |
+| src\app\p\[npub]                                                              |          1 |        234 |         22 |         37 |        293 |
+| src\app\privacy                                                               |          1 |         32 |          0 |          7 |         39 |
+| src\app\relays                                                                |          1 |        280 |          6 |         37 |        323 |
+| src\app\terms                                                                 |          1 |         56 |          1 |         14 |         71 |
+| src\components                                                                |         34 |      5,884 |        285 |        635 |      6,804 |
+| src\components\ai                                                             |          2 |        782 |         64 |         74 |        920 |
+| src\components\bounty                                                         |          3 |        950 |         80 |        101 |      1,131 |
+| src\components\compare                                                        |          2 |        311 |         12 |         40 |        363 |
+| src\components\detail                                                         |         10 |      1,930 |         92 |        223 |      2,245 |
+| src\components\home                                                           |          3 |        282 |         12 |         30 |        324 |
+| src\components\layout                                                         |          3 |        343 |         14 |         43 |        400 |
+| src\components\mcp                                                            |          2 |        332 |          8 |         34 |        374 |
+| src\components\ui                                                             |          9 |        954 |          3 |         90 |      1,047 |
+| src\data                                                                      |          1 |     46,088 |          0 |          0 |     46,088 |
+| src\lib                                                                       |         20 |     74,801 |        810 |        639 |     76,250 |
+| src\scripts                                                                   |          1 |        300 |         34 |         48 |        382 |
++-------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+
+Files
++-------------------------------------------------------------------------------+--------------------+------------+------------+------------+------------+
+| filename                                                                      | language           | code       | comment    | blank      | total      |
++-------------------------------------------------------------------------------+--------------------+------------+------------+------------+------------+
+| d:\UIT\NamBonUIT\nostrpulse-full\GEMINI.md                                    | Markdown           |          9 |          0 |          2 |         11 |
+| d:\UIT\NamBonUIT\nostrpulse-full\README.md                                    | Markdown           |        285 |          0 |         67 |        352 |
+| d:\UIT\NamBonUIT\nostrpulse-full\components.json                              | JSON               |         25 |          0 |          1 |         26 |
+| d:\UIT\NamBonUIT\nostrpulse-full\components\bounty\TaskResultView.tsx         | TypeScript JSX     |          2 |          1 |          1 |          4 |
+| d:\UIT\NamBonUIT\nostrpulse-full\dist\chunk-5S2EUFLN.js                       | JavaScript         |        642 |          3 |          5 |        650 |
+| d:\UIT\NamBonUIT\nostrpulse-full\dist\db-IMX2H4UJ.js                          | JavaScript         |         33 |          0 |          1 |         34 |
+| d:\UIT\NamBonUIT\nostrpulse-full\dist\mcp-entry.js                            | JavaScript         |     71,877 |         93 |         19 |     71,989 |
+| d:\UIT\NamBonUIT\nostrpulse-full\dist\package.json                            | JSON               |          3 |          0 |          0 |          3 |
+| d:\UIT\NamBonUIT\nostrpulse-full\eslint.config.mjs                            | JavaScript         |         14 |          2 |          3 |         19 |
+| d:\UIT\NamBonUIT\nostrpulse-full\lib\nip90.ts                                 | TypeScript         |          1 |          1 |          1 |          3 |
+| d:\UIT\NamBonUIT\nostrpulse-full\next.config.ts                               | TypeScript         |          5 |          0 |          3 |          8 |
+| d:\UIT\NamBonUIT\nostrpulse-full\package-lock.json                            | JSON               |     12,381 |          0 |          1 |     12,382 |
+| d:\UIT\NamBonUIT\nostrpulse-full\package.json                                 | JSON               |         59 |          0 |          1 |         60 |
+| d:\UIT\NamBonUIT\nostrpulse-full\postcss.config.mjs                           | JavaScript         |          6 |          0 |          2 |          8 |
+| d:\UIT\NamBonUIT\nostrpulse-full\public\file.svg                              | XML                |          1 |          0 |          0 |          1 |
+| d:\UIT\NamBonUIT\nostrpulse-full\public\globe.svg                             | XML                |          1 |          0 |          0 |          1 |
+| d:\UIT\NamBonUIT\nostrpulse-full\public\next.svg                              | XML                |          1 |          0 |          0 |          1 |
+| d:\UIT\NamBonUIT\nostrpulse-full\public\vercel.svg                            | XML                |          1 |          0 |          0 |          1 |
+| d:\UIT\NamBonUIT\nostrpulse-full\public\widget.js                             | JavaScript         |        672 |         32 |         57 |        761 |
+| d:\UIT\NamBonUIT\nostrpulse-full\public\window.svg                            | XML                |          1 |          0 |          0 |          1 |
+| d:\UIT\NamBonUIT\nostrpulse-full\scripts\build-ring1-cache.mjs                | JavaScript         |        191 |         26 |         39 |        256 |
+| d:\UIT\NamBonUIT\nostrpulse-full\scripts\discover-anchors.mjs                 | JavaScript         |        218 |         24 |         35 |        277 |
+| d:\UIT\NamBonUIT\nostrpulse-full\scripts\dvm-worker.ts                        | TypeScript         |        243 |         15 |         34 |        292 |
+| d:\UIT\NamBonUIT\nostrpulse-full\scripts\indexer-worker.ts                    | TypeScript         |         48 |         21 |         13 |         82 |
+| d:\UIT\NamBonUIT\nostrpulse-full\scripts\mock-dvm-worker.mjs                  | JavaScript         |         47 |          2 |          8 |         57 |
+| d:\UIT\NamBonUIT\nostrpulse-full\scripts\test-dvm-client.ts                   | TypeScript         |         66 |         11 |         12 |         89 |
+| d:\UIT\NamBonUIT\nostrpulse-full\scripts\test-dvm-fallback.ts                 | TypeScript         |         35 |          2 |          9 |         46 |
+| d:\UIT\NamBonUIT\nostrpulse-full\scripts\test-executor-lifecycle.ts           | TypeScript         |        104 |         23 |         25 |        152 |
+| d:\UIT\NamBonUIT\nostrpulse-full\scripts\test-mcp-stdio.ts                    | TypeScript         |         94 |          7 |         17 |        118 |
+| d:\UIT\NamBonUIT\nostrpulse-full\scripts\test-mini-agent.ts                   | TypeScript         |        115 |          8 |         24 |        147 |
+| d:\UIT\NamBonUIT\nostrpulse-full\scripts\test-nip59-encryption.ts             | TypeScript         |         91 |          7 |         25 |        123 |
+| d:\UIT\NamBonUIT\nostrpulse-full\scripts\test-nip90-module.ts                 | TypeScript         |         60 |          5 |         12 |         77 |
+| d:\UIT\NamBonUIT\nostrpulse-full\scripts\test-task-result.ts                  | TypeScript         |         49 |          2 |         10 |         61 |
+| d:\UIT\NamBonUIT\nostrpulse-full\scripts\test-tool-registry.ts                | TypeScript         |        138 |         19 |         21 |        178 |
+| d:\UIT\NamBonUIT\nostrpulse-full\scripts\test-trust-score-api.ts              | TypeScript         |         54 |          7 |         10 |         71 |
+| d:\UIT\NamBonUIT\nostrpulse-full\scripts\test-widget-api.ts                   | TypeScript         |         53 |          4 |         14 |         71 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\app\about\page.tsx                       | TypeScript JSX     |        151 |         11 |         16 |        178 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\app\agent\page.tsx                       | TypeScript JSX     |         48 |          4 |          6 |         58 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\app\api\badge\[npub]\route.ts            | TypeScript         |         60 |          3 |          8 |         71 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\app\api\bot\route.ts                     | TypeScript         |        307 |         18 |         26 |        351 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\app\api\creators\discover\route.ts       | TypeScript         |         54 |          2 |         12 |         68 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\app\api\creators\route.ts                | TypeScript         |         30 |          1 |          4 |         35 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\app\api\dvm\analytics\route.ts           | TypeScript         |         68 |          2 |         13 |         83 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\app\api\indexer\run\route.ts             | TypeScript         |         37 |          1 |          7 |         45 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\app\api\v1\trust-score\[pubkey]\route.ts | TypeScript         |         95 |         17 |         15 |        127 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\app\api\widget\claim\route.ts            | TypeScript         |        110 |          7 |         14 |        131 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\app\api\widget\quote\route.ts            | TypeScript         |         56 |          2 |          8 |         66 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\app\bot\page.tsx                         | TypeScript JSX     |         46 |          3 |          5 |         54 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\app\bounties\page.tsx                    | TypeScript JSX     |        313 |         19 |         37 |        369 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\app\compare\[pair]\page.tsx              | TypeScript JSX     |        145 |          9 |         27 |        181 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\app\compare\page.tsx                     | TypeScript JSX     |        232 |         13 |         40 |        285 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\app\contact\page.tsx                     | TypeScript JSX     |        115 |          2 |         18 |        135 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\app\globals.css                          | PostCSS            |        125 |          0 |          5 |        130 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\app\layout.tsx                           | TypeScript JSX     |        118 |          0 |          3 |        121 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\app\not-found.tsx                        | TypeScript JSX     |         96 |          4 |         11 |        111 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\app\p\[npub]\page.tsx                    | TypeScript JSX     |        234 |         22 |         37 |        293 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\app\page.tsx                             | TypeScript JSX     |         14 |          4 |          4 |         22 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\app\privacy\page.tsx                     | TypeScript JSX     |         32 |          0 |          7 |         39 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\app\relays\page.tsx                      | TypeScript JSX     |        280 |          6 |         37 |        323 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\app\terms\page.tsx                       | TypeScript JSX     |         56 |          1 |         14 |         71 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\ai\MachineSpenderBot.tsx      | TypeScript JSX     |        684 |         50 |         62 |        796 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\ai\MachineSpenderFAB.tsx      | TypeScript JSX     |         98 |         14 |         12 |        124 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\bounty\BountyCard.tsx         | TypeScript JSX     |        199 |         10 |         22 |        231 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\bounty\CreateBountyModal.tsx  | TypeScript JSX     |        196 |         12 |         20 |        228 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\bounty\TaskResultView.tsx     | TypeScript JSX     |        555 |         58 |         59 |        672 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\compare\CompareHero.tsx       | TypeScript JSX     |         89 |          1 |         18 |        108 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\compare\VersusTable.tsx       | TypeScript JSX     |        222 |         11 |         22 |        255 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\detail\Breadcrumb.tsx         | TypeScript JSX     |         22 |          0 |          7 |         29 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\detail\CreatorNotesFeed.tsx   | TypeScript JSX     |         80 |          5 |         11 |         96 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\detail\EmbedBadgeModal.tsx    | TypeScript JSX     |        172 |          6 |         18 |        196 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\detail\FAQSection.tsx         | TypeScript JSX     |         50 |          0 |          3 |         53 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\detail\LightningZapCard.tsx   | TypeScript JSX     |        836 |         40 |         92 |        968 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\detail\LiveZapFeed.tsx        | TypeScript JSX     |        240 |          9 |         32 |        281 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\detail\SuggestedCreators.tsx  | TypeScript JSX     |         63 |          1 |          7 |         71 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\detail\TrustScoreBadge.tsx    | TypeScript JSX     |         92 |          8 |         10 |        110 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\detail\TrustScoreCard.tsx     | TypeScript JSX     |        209 |         12 |         22 |        243 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\detail\ZapQrModal.tsx         | TypeScript JSX     |        166 |         11 |         21 |        198 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\home\HeroSearchSection.tsx    | TypeScript JSX     |         97 |          8 |         13 |        118 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\home\RelayDirectory.tsx       | TypeScript JSX     |         45 |          0 |          5 |         50 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\home\TopRankingGrid.tsx       | TypeScript JSX     |        140 |          4 |         12 |        156 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\layout\Footer.tsx             | TypeScript JSX     |         49 |          5 |          9 |         63 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\layout\Navbar.tsx             | TypeScript JSX     |        102 |          4 |         14 |        120 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\layout\NostrLoginButton.tsx   | TypeScript JSX     |        192 |          5 |         20 |        217 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\mcp\ConnectMcpCard.tsx        | TypeScript JSX     |         88 |          1 |         13 |        102 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\mcp\ConnectMcpModal.tsx       | TypeScript JSX     |        244 |          7 |         21 |        272 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\ui\UserAvatar.tsx             | TypeScript JSX     |         51 |          3 |          7 |         61 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\ui\badge.tsx                  | TypeScript JSX     |         48 |          0 |          5 |         53 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\ui\button.tsx                 | TypeScript JSX     |         54 |          0 |          5 |         59 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\ui\card.tsx                   | TypeScript JSX     |         94 |          0 |         10 |        104 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\ui\dialog.tsx                 | TypeScript JSX     |        147 |          0 |         14 |        161 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\ui\dropdown-menu.tsx          | TypeScript JSX     |        250 |          0 |         19 |        269 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\ui\input.tsx                  | TypeScript JSX     |         17 |          0 |          4 |         21 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\ui\select.tsx                 | TypeScript JSX     |        188 |          0 |         14 |        202 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\components\ui\table.tsx                  | TypeScript JSX     |        105 |          0 |         12 |        117 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\data\ring1-cache.json                    | JSON               |     46,088 |          0 |          0 |     46,088 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\lib\anchors.ts                           | TypeScript         |        181 |         56 |         12 |        249 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\lib\base-executor.ts                     | TypeScript         |        186 |         64 |         31 |        281 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\lib\cashu.ts                             | TypeScript         |        642 |         71 |         92 |        805 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\lib\creators.json                        | JSON               |        314 |          0 |          0 |        314 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\lib\creators.ts                          | TypeScript         |        104 |         16 |         16 |        136 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\lib\db.ts                                | TypeScript         |        380 |         47 |         61 |        488 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\lib\discovery.ts                         | TypeScript         |        271 |         28 |         34 |        333 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\lib\dvm.ts                               | TypeScript         |        359 |         46 |         44 |        449 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\lib\economic-stake.ts                    | TypeScript         |        290 |         91 |         42 |        423 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\lib\encryption.ts                        | TypeScript         |        208 |         49 |         42 |        299 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\lib\indexer.ts                           | TypeScript         |        398 |         63 |         58 |        519 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\lib\nip05.ts                             | TypeScript         |         67 |          6 |         10 |         83 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\lib\nip90.ts                             | TypeScript         |        265 |         22 |         44 |        331 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\lib\nostr.ts                             | TypeScript         |        300 |         34 |         45 |        379 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\lib\ring1-cache.json                     | JSON               |     69,991 |          0 |          0 |     69,991 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\lib\search.ts                            | TypeScript         |         17 |          4 |          4 |         25 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\lib\tool-registry.ts                     | TypeScript         |        183 |         47 |         27 |        257 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\lib\trust-score.ts                       | TypeScript         |        323 |         39 |         36 |        398 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\lib\utils.ts                             | TypeScript         |         33 |         15 |          4 |         52 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\lib\wot.ts                               | TypeScript         |        289 |        112 |         37 |        438 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\mcp-entry.ts                             | TypeScript         |        351 |         33 |         33 |        417 |
+| d:\UIT\NamBonUIT\nostrpulse-full\src\scripts\enrich-creators.mjs              | JavaScript         |        300 |         34 |         48 |        382 |
+| d:\UIT\NamBonUIT\nostrpulse-full\test-nip90.ts                                | TypeScript         |         55 |          7 |         13 |         75 |
+| d:\UIT\NamBonUIT\nostrpulse-full\tsconfig.json                                | JSON with Comments |         34 |          0 |          1 |         35 |
+| d:\UIT\NamBonUIT\nostrpulse-full\tsup.config.ts                               | TypeScript         |         20 |          0 |          2 |         22 |
+| Total                                                                         |                    |    217,980 |      1,635 |      2,217 |    221,832 |
++-------------------------------------------------------------------------------+--------------------+------------+------------+------------+------------+

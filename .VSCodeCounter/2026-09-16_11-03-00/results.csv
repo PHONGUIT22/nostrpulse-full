@@ -1,0 +1,122 @@
+"filename", "language", "JSON with Comments", "TypeScript", "JSON", "Markdown", "TypeScript JSX", "JavaScript", "PostCSS", "XML", "comment", "blank", "total"
+"d:\UIT\NamBonUIT\nostrpulse-full\GEMINI.md", "Markdown", 0, 0, 0, 9, 0, 0, 0, 0, 0, 2, 11
+"d:\UIT\NamBonUIT\nostrpulse-full\README.md", "Markdown", 0, 0, 0, 285, 0, 0, 0, 0, 0, 67, 352
+"d:\UIT\NamBonUIT\nostrpulse-full\components.json", "JSON", 0, 0, 25, 0, 0, 0, 0, 0, 0, 1, 26
+"d:\UIT\NamBonUIT\nostrpulse-full\components\bounty\TaskResultView.tsx", "TypeScript JSX", 0, 0, 0, 0, 2, 0, 0, 0, 1, 1, 4
+"d:\UIT\NamBonUIT\nostrpulse-full\dist\chunk-5S2EUFLN.js", "JavaScript", 0, 0, 0, 0, 0, 642, 0, 0, 3, 5, 650
+"d:\UIT\NamBonUIT\nostrpulse-full\dist\db-IMX2H4UJ.js", "JavaScript", 0, 0, 0, 0, 0, 33, 0, 0, 0, 1, 34
+"d:\UIT\NamBonUIT\nostrpulse-full\dist\mcp-entry.js", "JavaScript", 0, 0, 0, 0, 0, 71877, 0, 0, 93, 19, 71989
+"d:\UIT\NamBonUIT\nostrpulse-full\dist\package.json", "JSON", 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 3
+"d:\UIT\NamBonUIT\nostrpulse-full\eslint.config.mjs", "JavaScript", 0, 0, 0, 0, 0, 14, 0, 0, 2, 3, 19
+"d:\UIT\NamBonUIT\nostrpulse-full\lib\nip90.ts", "TypeScript", 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 3
+"d:\UIT\NamBonUIT\nostrpulse-full\next.config.ts", "TypeScript", 0, 5, 0, 0, 0, 0, 0, 0, 0, 3, 8
+"d:\UIT\NamBonUIT\nostrpulse-full\package-lock.json", "JSON", 0, 0, 12381, 0, 0, 0, 0, 0, 0, 1, 12382
+"d:\UIT\NamBonUIT\nostrpulse-full\package.json", "JSON", 0, 0, 59, 0, 0, 0, 0, 0, 0, 1, 60
+"d:\UIT\NamBonUIT\nostrpulse-full\postcss.config.mjs", "JavaScript", 0, 0, 0, 0, 0, 6, 0, 0, 0, 2, 8
+"d:\UIT\NamBonUIT\nostrpulse-full\public\file.svg", "XML", 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1
+"d:\UIT\NamBonUIT\nostrpulse-full\public\globe.svg", "XML", 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1
+"d:\UIT\NamBonUIT\nostrpulse-full\public\next.svg", "XML", 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1
+"d:\UIT\NamBonUIT\nostrpulse-full\public\vercel.svg", "XML", 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1
+"d:\UIT\NamBonUIT\nostrpulse-full\public\widget.js", "JavaScript", 0, 0, 0, 0, 0, 672, 0, 0, 32, 57, 761
+"d:\UIT\NamBonUIT\nostrpulse-full\public\window.svg", "XML", 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1
+"d:\UIT\NamBonUIT\nostrpulse-full\scripts\build-ring1-cache.mjs", "JavaScript", 0, 0, 0, 0, 0, 191, 0, 0, 26, 39, 256
+"d:\UIT\NamBonUIT\nostrpulse-full\scripts\discover-anchors.mjs", "JavaScript", 0, 0, 0, 0, 0, 218, 0, 0, 24, 35, 277
+"d:\UIT\NamBonUIT\nostrpulse-full\scripts\dvm-worker.ts", "TypeScript", 0, 243, 0, 0, 0, 0, 0, 0, 15, 34, 292
+"d:\UIT\NamBonUIT\nostrpulse-full\scripts\indexer-worker.ts", "TypeScript", 0, 48, 0, 0, 0, 0, 0, 0, 21, 13, 82
+"d:\UIT\NamBonUIT\nostrpulse-full\scripts\mock-dvm-worker.mjs", "JavaScript", 0, 0, 0, 0, 0, 47, 0, 0, 2, 8, 57
+"d:\UIT\NamBonUIT\nostrpulse-full\scripts\test-dvm-client.ts", "TypeScript", 0, 66, 0, 0, 0, 0, 0, 0, 11, 12, 89
+"d:\UIT\NamBonUIT\nostrpulse-full\scripts\test-dvm-fallback.ts", "TypeScript", 0, 35, 0, 0, 0, 0, 0, 0, 2, 9, 46
+"d:\UIT\NamBonUIT\nostrpulse-full\scripts\test-executor-lifecycle.ts", "TypeScript", 0, 104, 0, 0, 0, 0, 0, 0, 23, 25, 152
+"d:\UIT\NamBonUIT\nostrpulse-full\scripts\test-mcp-stdio.ts", "TypeScript", 0, 94, 0, 0, 0, 0, 0, 0, 7, 17, 118
+"d:\UIT\NamBonUIT\nostrpulse-full\scripts\test-mini-agent.ts", "TypeScript", 0, 115, 0, 0, 0, 0, 0, 0, 8, 24, 147
+"d:\UIT\NamBonUIT\nostrpulse-full\scripts\test-nip59-encryption.ts", "TypeScript", 0, 91, 0, 0, 0, 0, 0, 0, 7, 25, 123
+"d:\UIT\NamBonUIT\nostrpulse-full\scripts\test-nip90-module.ts", "TypeScript", 0, 60, 0, 0, 0, 0, 0, 0, 5, 12, 77
+"d:\UIT\NamBonUIT\nostrpulse-full\scripts\test-task-result.ts", "TypeScript", 0, 49, 0, 0, 0, 0, 0, 0, 2, 10, 61
+"d:\UIT\NamBonUIT\nostrpulse-full\scripts\test-tool-registry.ts", "TypeScript", 0, 138, 0, 0, 0, 0, 0, 0, 19, 21, 178
+"d:\UIT\NamBonUIT\nostrpulse-full\scripts\test-trust-score-api.ts", "TypeScript", 0, 54, 0, 0, 0, 0, 0, 0, 7, 10, 71
+"d:\UIT\NamBonUIT\nostrpulse-full\scripts\test-widget-api.ts", "TypeScript", 0, 53, 0, 0, 0, 0, 0, 0, 4, 14, 71
+"d:\UIT\NamBonUIT\nostrpulse-full\src\app\about\page.tsx", "TypeScript JSX", 0, 0, 0, 0, 151, 0, 0, 0, 11, 16, 178
+"d:\UIT\NamBonUIT\nostrpulse-full\src\app\agent\page.tsx", "TypeScript JSX", 0, 0, 0, 0, 48, 0, 0, 0, 4, 6, 58
+"d:\UIT\NamBonUIT\nostrpulse-full\src\app\api\badge\[npub]\route.ts", "TypeScript", 0, 60, 0, 0, 0, 0, 0, 0, 3, 8, 71
+"d:\UIT\NamBonUIT\nostrpulse-full\src\app\api\bot\route.ts", "TypeScript", 0, 307, 0, 0, 0, 0, 0, 0, 18, 26, 351
+"d:\UIT\NamBonUIT\nostrpulse-full\src\app\api\creators\discover\route.ts", "TypeScript", 0, 54, 0, 0, 0, 0, 0, 0, 2, 12, 68
+"d:\UIT\NamBonUIT\nostrpulse-full\src\app\api\creators\route.ts", "TypeScript", 0, 30, 0, 0, 0, 0, 0, 0, 1, 4, 35
+"d:\UIT\NamBonUIT\nostrpulse-full\src\app\api\dvm\analytics\route.ts", "TypeScript", 0, 68, 0, 0, 0, 0, 0, 0, 2, 13, 83
+"d:\UIT\NamBonUIT\nostrpulse-full\src\app\api\indexer\run\route.ts", "TypeScript", 0, 37, 0, 0, 0, 0, 0, 0, 1, 7, 45
+"d:\UIT\NamBonUIT\nostrpulse-full\src\app\api\v1\trust-score\[pubkey]\route.ts", "TypeScript", 0, 95, 0, 0, 0, 0, 0, 0, 17, 15, 127
+"d:\UIT\NamBonUIT\nostrpulse-full\src\app\api\widget\claim\route.ts", "TypeScript", 0, 110, 0, 0, 0, 0, 0, 0, 7, 14, 131
+"d:\UIT\NamBonUIT\nostrpulse-full\src\app\api\widget\quote\route.ts", "TypeScript", 0, 56, 0, 0, 0, 0, 0, 0, 2, 8, 66
+"d:\UIT\NamBonUIT\nostrpulse-full\src\app\bot\page.tsx", "TypeScript JSX", 0, 0, 0, 0, 46, 0, 0, 0, 3, 5, 54
+"d:\UIT\NamBonUIT\nostrpulse-full\src\app\bounties\page.tsx", "TypeScript JSX", 0, 0, 0, 0, 313, 0, 0, 0, 19, 37, 369
+"d:\UIT\NamBonUIT\nostrpulse-full\src\app\compare\[pair]\page.tsx", "TypeScript JSX", 0, 0, 0, 0, 145, 0, 0, 0, 9, 27, 181
+"d:\UIT\NamBonUIT\nostrpulse-full\src\app\compare\page.tsx", "TypeScript JSX", 0, 0, 0, 0, 232, 0, 0, 0, 13, 40, 285
+"d:\UIT\NamBonUIT\nostrpulse-full\src\app\contact\page.tsx", "TypeScript JSX", 0, 0, 0, 0, 115, 0, 0, 0, 2, 18, 135
+"d:\UIT\NamBonUIT\nostrpulse-full\src\app\globals.css", "PostCSS", 0, 0, 0, 0, 0, 0, 125, 0, 0, 5, 130
+"d:\UIT\NamBonUIT\nostrpulse-full\src\app\layout.tsx", "TypeScript JSX", 0, 0, 0, 0, 118, 0, 0, 0, 0, 3, 121
+"d:\UIT\NamBonUIT\nostrpulse-full\src\app\not-found.tsx", "TypeScript JSX", 0, 0, 0, 0, 96, 0, 0, 0, 4, 11, 111
+"d:\UIT\NamBonUIT\nostrpulse-full\src\app\p\[npub]\page.tsx", "TypeScript JSX", 0, 0, 0, 0, 234, 0, 0, 0, 22, 37, 293
+"d:\UIT\NamBonUIT\nostrpulse-full\src\app\page.tsx", "TypeScript JSX", 0, 0, 0, 0, 14, 0, 0, 0, 4, 4, 22
+"d:\UIT\NamBonUIT\nostrpulse-full\src\app\privacy\page.tsx", "TypeScript JSX", 0, 0, 0, 0, 32, 0, 0, 0, 0, 7, 39
+"d:\UIT\NamBonUIT\nostrpulse-full\src\app\relays\page.tsx", "TypeScript JSX", 0, 0, 0, 0, 280, 0, 0, 0, 6, 37, 323
+"d:\UIT\NamBonUIT\nostrpulse-full\src\app\terms\page.tsx", "TypeScript JSX", 0, 0, 0, 0, 56, 0, 0, 0, 1, 14, 71
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\ai\MachineSpenderBot.tsx", "TypeScript JSX", 0, 0, 0, 0, 684, 0, 0, 0, 50, 62, 796
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\ai\MachineSpenderFAB.tsx", "TypeScript JSX", 0, 0, 0, 0, 98, 0, 0, 0, 14, 12, 124
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\bounty\BountyCard.tsx", "TypeScript JSX", 0, 0, 0, 0, 199, 0, 0, 0, 10, 22, 231
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\bounty\CreateBountyModal.tsx", "TypeScript JSX", 0, 0, 0, 0, 196, 0, 0, 0, 12, 20, 228
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\bounty\TaskResultView.tsx", "TypeScript JSX", 0, 0, 0, 0, 555, 0, 0, 0, 58, 59, 672
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\compare\CompareHero.tsx", "TypeScript JSX", 0, 0, 0, 0, 89, 0, 0, 0, 1, 18, 108
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\compare\VersusTable.tsx", "TypeScript JSX", 0, 0, 0, 0, 222, 0, 0, 0, 11, 22, 255
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\detail\Breadcrumb.tsx", "TypeScript JSX", 0, 0, 0, 0, 22, 0, 0, 0, 0, 7, 29
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\detail\CreatorNotesFeed.tsx", "TypeScript JSX", 0, 0, 0, 0, 80, 0, 0, 0, 5, 11, 96
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\detail\EmbedBadgeModal.tsx", "TypeScript JSX", 0, 0, 0, 0, 172, 0, 0, 0, 6, 18, 196
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\detail\FAQSection.tsx", "TypeScript JSX", 0, 0, 0, 0, 50, 0, 0, 0, 0, 3, 53
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\detail\LightningZapCard.tsx", "TypeScript JSX", 0, 0, 0, 0, 836, 0, 0, 0, 40, 92, 968
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\detail\LiveZapFeed.tsx", "TypeScript JSX", 0, 0, 0, 0, 240, 0, 0, 0, 9, 32, 281
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\detail\SuggestedCreators.tsx", "TypeScript JSX", 0, 0, 0, 0, 63, 0, 0, 0, 1, 7, 71
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\detail\TrustScoreBadge.tsx", "TypeScript JSX", 0, 0, 0, 0, 92, 0, 0, 0, 8, 10, 110
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\detail\TrustScoreCard.tsx", "TypeScript JSX", 0, 0, 0, 0, 209, 0, 0, 0, 12, 22, 243
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\detail\ZapQrModal.tsx", "TypeScript JSX", 0, 0, 0, 0, 166, 0, 0, 0, 11, 21, 198
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\home\HeroSearchSection.tsx", "TypeScript JSX", 0, 0, 0, 0, 97, 0, 0, 0, 8, 13, 118
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\home\RelayDirectory.tsx", "TypeScript JSX", 0, 0, 0, 0, 45, 0, 0, 0, 0, 5, 50
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\home\TopRankingGrid.tsx", "TypeScript JSX", 0, 0, 0, 0, 140, 0, 0, 0, 4, 12, 156
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\layout\Footer.tsx", "TypeScript JSX", 0, 0, 0, 0, 49, 0, 0, 0, 5, 9, 63
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\layout\Navbar.tsx", "TypeScript JSX", 0, 0, 0, 0, 102, 0, 0, 0, 4, 14, 120
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\layout\NostrLoginButton.tsx", "TypeScript JSX", 0, 0, 0, 0, 192, 0, 0, 0, 5, 20, 217
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\mcp\ConnectMcpCard.tsx", "TypeScript JSX", 0, 0, 0, 0, 88, 0, 0, 0, 1, 13, 102
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\mcp\ConnectMcpModal.tsx", "TypeScript JSX", 0, 0, 0, 0, 244, 0, 0, 0, 7, 21, 272
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\ui\UserAvatar.tsx", "TypeScript JSX", 0, 0, 0, 0, 51, 0, 0, 0, 3, 7, 61
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\ui\badge.tsx", "TypeScript JSX", 0, 0, 0, 0, 48, 0, 0, 0, 0, 5, 53
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\ui\button.tsx", "TypeScript JSX", 0, 0, 0, 0, 54, 0, 0, 0, 0, 5, 59
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\ui\card.tsx", "TypeScript JSX", 0, 0, 0, 0, 94, 0, 0, 0, 0, 10, 104
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\ui\dialog.tsx", "TypeScript JSX", 0, 0, 0, 0, 147, 0, 0, 0, 0, 14, 161
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\ui\dropdown-menu.tsx", "TypeScript JSX", 0, 0, 0, 0, 250, 0, 0, 0, 0, 19, 269
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\ui\input.tsx", "TypeScript JSX", 0, 0, 0, 0, 17, 0, 0, 0, 0, 4, 21
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\ui\select.tsx", "TypeScript JSX", 0, 0, 0, 0, 188, 0, 0, 0, 0, 14, 202
+"d:\UIT\NamBonUIT\nostrpulse-full\src\components\ui\table.tsx", "TypeScript JSX", 0, 0, 0, 0, 105, 0, 0, 0, 0, 12, 117
+"d:\UIT\NamBonUIT\nostrpulse-full\src\data\ring1-cache.json", "JSON", 0, 0, 46088, 0, 0, 0, 0, 0, 0, 0, 46088
+"d:\UIT\NamBonUIT\nostrpulse-full\src\lib\anchors.ts", "TypeScript", 0, 181, 0, 0, 0, 0, 0, 0, 56, 12, 249
+"d:\UIT\NamBonUIT\nostrpulse-full\src\lib\base-executor.ts", "TypeScript", 0, 186, 0, 0, 0, 0, 0, 0, 64, 31, 281
+"d:\UIT\NamBonUIT\nostrpulse-full\src\lib\cashu.ts", "TypeScript", 0, 642, 0, 0, 0, 0, 0, 0, 71, 92, 805
+"d:\UIT\NamBonUIT\nostrpulse-full\src\lib\creators.json", "JSON", 0, 0, 314, 0, 0, 0, 0, 0, 0, 0, 314
+"d:\UIT\NamBonUIT\nostrpulse-full\src\lib\creators.ts", "TypeScript", 0, 104, 0, 0, 0, 0, 0, 0, 16, 16, 136
+"d:\UIT\NamBonUIT\nostrpulse-full\src\lib\db.ts", "TypeScript", 0, 380, 0, 0, 0, 0, 0, 0, 47, 61, 488
+"d:\UIT\NamBonUIT\nostrpulse-full\src\lib\discovery.ts", "TypeScript", 0, 271, 0, 0, 0, 0, 0, 0, 28, 34, 333
+"d:\UIT\NamBonUIT\nostrpulse-full\src\lib\dvm.ts", "TypeScript", 0, 359, 0, 0, 0, 0, 0, 0, 46, 44, 449
+"d:\UIT\NamBonUIT\nostrpulse-full\src\lib\economic-stake.ts", "TypeScript", 0, 290, 0, 0, 0, 0, 0, 0, 91, 42, 423
+"d:\UIT\NamBonUIT\nostrpulse-full\src\lib\encryption.ts", "TypeScript", 0, 208, 0, 0, 0, 0, 0, 0, 49, 42, 299
+"d:\UIT\NamBonUIT\nostrpulse-full\src\lib\indexer.ts", "TypeScript", 0, 398, 0, 0, 0, 0, 0, 0, 63, 58, 519
+"d:\UIT\NamBonUIT\nostrpulse-full\src\lib\nip05.ts", "TypeScript", 0, 67, 0, 0, 0, 0, 0, 0, 6, 10, 83
+"d:\UIT\NamBonUIT\nostrpulse-full\src\lib\nip90.ts", "TypeScript", 0, 265, 0, 0, 0, 0, 0, 0, 22, 44, 331
+"d:\UIT\NamBonUIT\nostrpulse-full\src\lib\nostr.ts", "TypeScript", 0, 300, 0, 0, 0, 0, 0, 0, 34, 45, 379
+"d:\UIT\NamBonUIT\nostrpulse-full\src\lib\ring1-cache.json", "JSON", 0, 0, 69991, 0, 0, 0, 0, 0, 0, 0, 69991
+"d:\UIT\NamBonUIT\nostrpulse-full\src\lib\search.ts", "TypeScript", 0, 17, 0, 0, 0, 0, 0, 0, 4, 4, 25
+"d:\UIT\NamBonUIT\nostrpulse-full\src\lib\tool-registry.ts", "TypeScript", 0, 183, 0, 0, 0, 0, 0, 0, 47, 27, 257
+"d:\UIT\NamBonUIT\nostrpulse-full\src\lib\trust-score.ts", "TypeScript", 0, 323, 0, 0, 0, 0, 0, 0, 39, 36, 398
+"d:\UIT\NamBonUIT\nostrpulse-full\src\lib\utils.ts", "TypeScript", 0, 33, 0, 0, 0, 0, 0, 0, 15, 4, 52
+"d:\UIT\NamBonUIT\nostrpulse-full\src\lib\wot.ts", "TypeScript", 0, 289, 0, 0, 0, 0, 0, 0, 112, 37, 438
+"d:\UIT\NamBonUIT\nostrpulse-full\src\mcp-entry.ts", "TypeScript", 0, 351, 0, 0, 0, 0, 0, 0, 33, 33, 417
+"d:\UIT\NamBonUIT\nostrpulse-full\src\scripts\enrich-creators.mjs", "JavaScript", 0, 0, 0, 0, 0, 300, 0, 0, 34, 48, 382
+"d:\UIT\NamBonUIT\nostrpulse-full\test-nip90.ts", "TypeScript", 0, 55, 0, 0, 0, 0, 0, 0, 7, 13, 75
+"d:\UIT\NamBonUIT\nostrpulse-full\tsconfig.json", "JSON with Comments", 34, 0, 0, 0, 0, 0, 0, 0, 0, 1, 35
+"d:\UIT\NamBonUIT\nostrpulse-full\tsup.config.ts", "TypeScript", 0, 20, 0, 0, 0, 0, 0, 0, 0, 2, 22
+"Total", "-", 34, 6895, 128861, 294, 7766, 74000, 125, 5, 1635, 2217, 221832
