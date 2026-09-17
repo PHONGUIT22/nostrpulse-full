@@ -5,6 +5,7 @@
 **Autonomous Payment & Sybil-Resistant Trust Layer for AI Agents via Nostr, Cashu eCash (NIP-61), and MCP.**
 
 [![npm version](https://img.shields.io/npm/v/nostrpulse-mcp?style=for-the-badge&color=CB3837&logo=npm)](https://www.npmjs.com/package/nostrpulse-mcp)
+[![Release: v1.1.1](https://img.shields.io/badge/Release-v1.1.1-2563EB?style=for-the-badge&logo=github)](https://github.com/PHONGUIT22/nostrpulse-full/releases)
 [![MCP Stdio](https://img.shields.io/badge/MCP-Stdio_Protocol-009688?style=for-the-badge)](https://modelcontextprotocol.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-9333EA?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![Track](https://img.shields.io/badge/Track_2-Freedom_Stack-F7931A?style=for-the-badge&logo=bitcoin&logoColor=white)](https://bitshala.org)
@@ -68,11 +69,15 @@ npx @modelcontextprotocol/inspector npx -y nostrpulse-mcp
 | Tool Name | Type | Description |
 | :--- | :---: | :--- |
 | `check_trust_score` | **Radar / Anti-Sybil** | Anti-fraud radar for AI agents. Evaluates Web-of-Trust Ring-1 (22 Root Anchors), transitive hops, and Sybil-filtered Economic Stake (sats) before interacting or paying. |
-| `pay_cashu_nutzap` | **Payment Rails (eCash)** | Instant machine-to-machine (M2M) settlement with Chaumian eCash (NIP-61 NutZap) wrapped in metadata-private NIP-59 Gift Wrap and NIP-44 encryption. |
-| `pay_lightning_nwc` | **Payment Rails (Lightning)** | Settle BOLT-11 Lightning invoices directly through an autonomous node via NIP-47 Nostr Wallet Connect (Alby Hub, Phoenixd, Umbrel). |
+| `pay_cashu_nutzap` | **Payment Rails (eCash)** | Instant machine-to-machine (M2M) settlement with Chaumian eCash (NIP-61 NutZap) wrapped in metadata-private NIP-59 Gift Wrap and NIP-44 encryption. Wrapped with pre-flight spending guardrails. |
+| `request_nip90_job` | **Decentralized Compute** | Dispatches compute and data-processing tasks to decentralized NIP-90 Data Vending Machines (DVMs) across Nostr relays with local SQLite cache fallback. |
+| `pay_lightning_nwc` | **Payment Rails (Lightning)** | Settle BOLT-11 Lightning invoices directly through an autonomous node via NIP-47 Nostr Wallet Connect (Alby Hub, Phoenixd, Umbrel) with spending guardrails. |
+| `pay_with_nwc` | **Payment Rails (Alias)** | Direct NWC payment executor alias for `pay_lightning_nwc`. |
 | `audit_cashu_mint` | **Mint Radar** | Audit and evaluate counterparty risk of a Cashu eCash Mint using Web-of-Trust graph distance, NIP-05 sovereign domain validation, and admin reputation. |
 | `route_cashu_mint` | **Mint Mesh** | Dynamically discover and route to the highest-trust, lowest-latency Cashu Mint from the WoT-Gated Dynamic Mint Mesh. |
-| `request_nip90_job` | **Decentralized Compute** | Dispatches compute and data-processing tasks to decentralized NIP-90 Data Vending Machines (DVMs) across Nostr relays with local SQLite cache fallback. |
+| `get_agent_identity` | **Zero-Config Identity** | Retrieve active autonomous AI agent cryptographic public identity (`pubkey`, `npub`, keystore source, ephemeral status). Automatically bootstraps local keys. |
+| `get_spending_guardrails` | **Budget Gatekeeper** | Query current AI agent spending guardrails, daily budget (500 sats rolling), 24h satoshis spent, remaining allowance, and per-tx limits (50 sats). |
+| `get_agent_telemetry` | **Telemetry & Audit** | Inspect autonomous agent spending metrics, rolling 24h budget allowance, blocked Sybil threats, and Stripe Radar-grade recent telemetry events. |
 
 ---
 
@@ -225,6 +230,58 @@ A dedicated interface demonstrating autonomous agent commerce:
 
 ---
 
+### 7. 🛡️ Autonomous Agent Spending Guardrails & Budget Manager
+
+To prevent autonomous agents from draining balances through infinite loops, hallucinated calls, or prompt injections, NostrPulse enforces real-time **Spending Guardrails**:
+
+```text
+[ Agent Payment Request ] ──► Check maxSatsPerTx (50 sats) ──► Check Rolling 24h Spend (500 sats) ──► Resolve WoT Score (>= 40)
+                                            │                                      │                                 │
+                                            ▼ (Any Violation)                      ▼ (Any Violation)                 ▼ (Any Violation)
+                                  [ Short-Circuit Block ] ◄────────────── [ Short-Circuit Block ] ◄───────── [ Short-Circuit Block ]
+                                            │
+                                            ▼
+                           Return { status: "blocked_by_guardrails" } (0 Sats Spent)
+```
+
+* **Per-Transaction Cap (`AGENT_MAX_SATS_PER_TX`):** Restricts single transaction calls to a safe default of **50 sats**.
+* **24-Hour Rolling Budget (`AGENT_DAILY_LIMIT_SATS`):** Queries SQLite table `agent_spending_log` to enforce a rolling daily limit of **500 sats**.
+* **Anti-Sybil Counterparty Gate (`AGENT_MIN_RECIPIENT_SCORE`):** Evaluates counterparty trust score via Web-of-Trust graph distance; payments to unverified or bot identities (< 40 score) are automatically intercepted and blocked.
+* **Non-Custodial Safety:** Rejections return `{ status: "blocked_by_guardrails", reason }` instantly without spending funds.
+
+---
+
+### 8. 🔑 Zero-Config Sovereign Identity Bootstrapping
+
+Eliminates the friction of requiring developers or agents to manually generate, paste, or expose `nsec` private keys before running:
+
+```text
+[ Agent Initialization ]
+          │
+          ├──► 1. Check process.env.NOSTR_SECRET_KEY / AGENT_NSEC (Hex or Bech32 nsec1...)
+          │         └── Found? ──► Use environment identity
+          │
+          ├──► 2. Check Local Keystore (.nostrpulse/agent-identity.json)
+          │         └── Exists? ──► Restore persistent identity
+          │
+          └──► 3. Cryptographic CSPRNG Generation (nostr-tools/pure)
+                    └── Generates secp256k1 keypair ──► Writes to .nostrpulse/ (Mode 0600)
+```
+
+* **Automated Persistence:** Keypair is saved to `.nostrpulse/agent-identity.json` with restricted permissions and automatically excluded from Git commits via `.gitignore`.
+* **Instant Readiness:** Tools like `get_agent_identity` allow agents to query their public identity (`pubkey`, `npub`, source, ephemeral flag) out-of-the-box.
+
+---
+
+### 9. 📊 Developer Telemetry & Stripe Radar Audit Trail
+
+A comprehensive developer observability layer (`src/lib/telemetry.ts`) providing a Stripe-grade audit trail:
+* **Event Logging:** Records structured JSON logs for `payment`, `radar_block`, `job_settlement`, and `mint_audit` into SQLite table `agent_telemetry`.
+* **Developer Summary Metrics:** Computes `totalSpentSats`, `txCount`, and `blockedSybilAttacks` across configurable timeframes (default: 24h).
+* **Dual Access:** Consumable directly by AI agents via MCP tool `get_agent_telemetry` and by web dashboards via Next.js REST API `GET /api/telemetry`.
+
+---
+
 ## 📜 Protocol Specifications (NIPs, NUTs & MCP)
 
 <table>
@@ -371,7 +428,13 @@ npx -y nostrpulse-mcp
 
 ### 4. Run Verification & Test Suites
 ```bash
-# Test full MCP Stdio JSON-RPC integration (all 5 core tools discovered & tested)
+# Test Agent Spending Guardrails, Budget Limits & Zero-Config Identity
+npx tsx scripts/test-guardrails.ts
+
+# Test Developer Telemetry & Audit Trail data layer
+npx tsx scripts/test-agent-telemetry.ts
+
+# Test full MCP Stdio JSON-RPC integration (all 10 tools discovered & tested)
 npx tsx scripts/test-mcp-stdio.ts
 
 # Test NIP-47 NWC payment execution, URI parsing, and timeout guards
@@ -403,7 +466,7 @@ npx tsc --noEmit
 - [x] **Phase 7:** MCP Stdio Server & npm package deployment (`nostrpulse-mcp` on npm registry).
 - [x] **Phase 8:** NIP-47 Nostr Wallet Connect (NWC) direct Lightning rail for autonomous node settlement.
 - [x] **Phase 9:** WoT-Gated Dynamic Mint Mesh & NUT-06 5-Pillar Counterparty Risk Radar.
-- [ ] **Phase 10:** NUT-11 (P2PK) locks for deterministic, recipient-locked eCash NutZaps.
+- [x] **Phase 10:** Agent Spending Guardrails (single-tx cap & 24h limits), Zero-Config Identity Bootstrapping & Developer Telemetry Data Layer.
 - [ ] **Phase 11:** Standalone `@nostrpulse/sdk` for seamless integration into third-party Nostr clients.
 
 ---
