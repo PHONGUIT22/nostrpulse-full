@@ -105,6 +105,42 @@ async function main() {
     console.log(`Verified DVM -> Source: "${dvmData.source}", Fallback: ${dvmData.dvmFallback}, Sats: ${dvmData.totalSats}`);
     console.log("--> request_nip90_job tool execution: PASSED");
 
+    // 6. Test execution of get_agent_identity (Zero-Config Identity)
+    console.log("\n[Test 6] Executing 'get_agent_identity'...");
+    const identityResult: any = await client.callTool({
+      name: "get_agent_identity",
+      arguments: {},
+    });
+    const identityText = identityResult.content?.[0]?.text;
+    const identityData = JSON.parse(identityText || "{}");
+    console.log(`Verified Identity -> Pubkey: ${identityData.pubkey}, Npub: ${identityData.npub}, Source: ${identityData.source}`);
+    if (!identityData.pubkey || !identityData.npub) throw new Error("Failed to retrieve agent identity");
+    console.log("--> get_agent_identity tool execution: PASSED");
+
+    // 7. Test execution of get_spending_guardrails
+    console.log("\n[Test 7] Executing 'get_spending_guardrails'...");
+    const guardrailsResult: any = await client.callTool({
+      name: "get_spending_guardrails",
+      arguments: {},
+    });
+    const guardrailsText = guardrailsResult.content?.[0]?.text;
+    const guardrailsData = JSON.parse(guardrailsText || "{}");
+    console.log(`Verified Guardrails -> Daily Budget: ${guardrailsData.dailyBudgetSats} sats, Remaining: ${guardrailsData.remainingDailySats} sats`);
+    if (typeof guardrailsData.dailyBudgetSats !== "number") throw new Error("Failed to retrieve spending guardrails");
+    console.log("--> get_spending_guardrails tool execution: PASSED");
+
+    // 8. Test execution of get_agent_telemetry
+    console.log("\n[Test 8] Executing 'get_agent_telemetry'...");
+    const telemetryResult: any = await client.callTool({
+      name: "get_agent_telemetry",
+      arguments: { limit: 5 },
+    });
+    const telemetryText = telemetryResult.content?.[0]?.text;
+    const telemetryData = JSON.parse(telemetryText || "{}");
+    console.log(`Verified Telemetry -> Total Events: ${telemetryData.overview?.totalEvents}, Success Rate: ${telemetryData.overview?.successRatePercent}%`);
+    if (typeof telemetryData.overview?.totalEvents !== "number") throw new Error("Failed to retrieve telemetry overview");
+    console.log("--> get_agent_telemetry tool execution: PASSED");
+
     console.log("\n=== ALL MCP Stdio Server Tests Passed with 100% Success! ===");
   } finally {
     try {
