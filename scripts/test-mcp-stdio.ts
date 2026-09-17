@@ -40,11 +40,13 @@ async function main() {
     if (
       !toolNames.includes("check_trust_score") ||
       !toolNames.includes("pay_cashu_nutzap") ||
-      !toolNames.includes("request_nip90_job")
+      !toolNames.includes("request_nip90_job") ||
+      !toolNames.includes("pay_lightning_nwc") ||
+      !toolNames.includes("audit_cashu_mint")
     ) {
       throw new Error(`Missing expected tools. Found: ${toolNames.join(", ")}`);
     }
-    console.log("--> All 3 core tools (check_trust_score, pay_cashu_nutzap, request_nip90_job) are registered!");
+    console.log("--> All tools (check_trust_score, pay_cashu_nutzap, request_nip90_job, pay_lightning_nwc, audit_cashu_mint) are registered!");
 
     // 3. Test execution of check_trust_score
     console.log("\n[Test 3] Executing 'check_trust_score' for fiatjaf...");
@@ -108,7 +110,9 @@ async function main() {
     try {
       await client.close();
     } catch {}
+    process.exit(0);
   }
+
 }
 
 main().catch((err) => {
