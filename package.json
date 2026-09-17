@@ -1,6 +1,6 @@
 {
   "name": "nostrpulse-mcp",
-  "version": "1.0.5",
+  "version": "1.1.0",
   "description": "Autonomous Payment & Sybil-Resistant Trust Layer for AI Agents via MCP",
   "main": "./dist/mcp-entry.js",
   "bin": {
