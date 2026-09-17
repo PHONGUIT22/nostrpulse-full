@@ -48,3 +48,6 @@ nostrpulse.db*
 *.tsbuildinfo
 next-env.d.ts
 .VSCodeCounters
+
+# nostrpulse local cache & agent identity
+.nostrpulse/
