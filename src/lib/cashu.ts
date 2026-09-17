@@ -34,6 +34,10 @@ export const RECOMMENDED_MINTS: CashuMintOption[] = [
 // Default Mint (Testnut)
 export const DEFAULT_CASHU_MINT = "https://testnut.cashu.space";
 
+export { auditCashuMint, selectBestMint, routeCashuMint, DEFAULT_MINT_MESH_URLS } from "./mint-mesh";
+export type { MintRiskProfile, MintAuditResult, DynamicMintRoutingResult, MintNutCompliance, MintPillarBreakdown } from "./mint-mesh";
+
+
 const RELAYS = [
   "wss://relay.primal.net",
   "wss://nos.lol"
