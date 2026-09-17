@@ -8,8 +8,8 @@
 [![MCP Stdio](https://img.shields.io/badge/MCP-Stdio_Protocol-009688?style=for-the-badge)](https://modelcontextprotocol.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-9333EA?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![Track](https://img.shields.io/badge/Track_2-Freedom_Stack-F7931A?style=for-the-badge&logo=bitcoin&logoColor=white)](https://bitshala.org)
-[![Nostr Protocol](https://img.shields.io/badge/Nostr-NIPs_Compliant-8A2BE2?style=for-the-badge&logo=nostr)](https://github.com/nostr-protocol/nips)
-[![Cashu Protocol](https://img.shields.io/badge/Cashu-NUTs_V4_eCash-00D084?style=for-the-badge)](https://cashu.space)
+[![Nostr Protocol](https://img.shields.io/badge/Nostr-NIP--47_NWC_Lightning-8A2BE2?style=for-the-badge&logo=nostr)](https://github.com/nostr-protocol/nips/blob/master/47.md)
+[![Cashu Protocol](https://img.shields.io/badge/Cashu-NUT--06_Mint_Radar-00D084?style=for-the-badge)](https://cashu.space)
 [![Next.js 16](https://img.shields.io/badge/Next.js_16-App_Router-000000?style=for-the-badge&logo=next.js)](https://nextjs.org/)
 
 <br />
@@ -68,7 +68,10 @@ npx @modelcontextprotocol/inspector npx -y nostrpulse-mcp
 | Tool Name | Type | Description |
 | :--- | :---: | :--- |
 | `check_trust_score` | **Radar / Anti-Sybil** | Anti-fraud radar for AI agents. Evaluates Web-of-Trust Ring-1 (22 Root Anchors), transitive hops, and Sybil-filtered Economic Stake (sats) before interacting or paying. |
-| `pay_cashu_nutzap` | **Payment Rails** | Instant machine-to-machine (M2M) settlement with Chaumian eCash (NIP-61 NutZap) wrapped in metadata-private NIP-59 Gift Wrap and NIP-44 encryption. |
+| `pay_cashu_nutzap` | **Payment Rails (eCash)** | Instant machine-to-machine (M2M) settlement with Chaumian eCash (NIP-61 NutZap) wrapped in metadata-private NIP-59 Gift Wrap and NIP-44 encryption. |
+| `pay_lightning_nwc` | **Payment Rails (Lightning)** | Settle BOLT-11 Lightning invoices directly through an autonomous node via NIP-47 Nostr Wallet Connect (Alby Hub, Phoenixd, Umbrel). |
+| `audit_cashu_mint` | **Mint Radar** | Audit and evaluate counterparty risk of a Cashu eCash Mint using Web-of-Trust graph distance, NIP-05 sovereign domain validation, and admin reputation. |
+| `route_cashu_mint` | **Mint Mesh** | Dynamically discover and route to the highest-trust, lowest-latency Cashu Mint from the WoT-Gated Dynamic Mint Mesh. |
 | `request_nip90_job` | **Decentralized Compute** | Dispatches compute and data-processing tasks to decentralized NIP-90 Data Vending Machines (DVMs) across Nostr relays with local SQLite cache fallback. |
 
 ---
@@ -98,7 +101,7 @@ Open agentic systems and decentralized protocols eliminate platform lock-in, but
   <tr>
     <td width="25%" align="center"><b>1. Identity & Discovery</b></td>
     <td width="25%" align="center"><b>2. Reputation & Anti-Sybil</b></td>
-    <td width="25%" align="center"><b>3. Dual-Rail Value Rails</b></td>
+    <td width="25%" align="center"><b>3. Multi-Rail Value Rails</b></td>
     <td width="25%" align="center"><b>4. AI MCP & NIP-90 DVM</b></td>
   </tr>
   <tr>
@@ -112,13 +115,15 @@ Open agentic systems and decentralized protocols eliminate platform lock-in, but
       • <b>5-Pillar Score</b> (0–100 pts)<br>
       • <b>22 Root Anchors</b> WoT graph<br>
       • <b>Anti-Sybil Damping Guard</b><br>
+      • <b>Mint Reputation Radar</b><br>
       • <b>Dual-bar Economic Stake</b>
     </td>
     <td>
-      • <b>NIP-57:</b> Lightning Zaps<br>
+      • <b>NIP-47:</b> NWC Lightning Rail<br>
       • <b>NIP-61:</b> Cashu NutZaps<br>
+      • <b>NIP-57:</b> Lightning Zaps<br>
       • <b>NIP-59:</b> Gift Wrap Privacy<br>
-      • <b>NUT-00 v4:</b> CBOR (<code>cashuB</code>)
+      • <b>NUT-06:</b> Dynamic Mint Mesh
     </td>
     <td>
       • <b>MCP Stdio:</b> JSON-RPC server<br>
@@ -167,7 +172,42 @@ User/Agent selects Sats ──► Request NUT-04 Quote ──► Settle via WebL
 
 ---
 
-### 3. 🤖 Autonomous Machine Money Agent (`/agent`)
+### 3. ⚡ NIP-47 Nostr Wallet Connect (NWC) Direct Lightning Rail
+
+NostrPulse integrates a high-performance, zero-memory-leak client for **NIP-47 Nostr Wallet Connect**, allowing AI agents to pay BOLT-11 Lightning invoices directly through self-hosted autonomous nodes (Alby Hub, Phoenixd, Umbrel, LNBits):
+
+```text
+[ NIP-47 Direct Lightning Settlement Pipeline ]
+Agent receives Invoice ──► Parse NWC URI ──► Encrypt Payload (NIP-04/44) ──► Publish Kind 23194 ──► Listen Kind 23195 (Tagged by #e) ──► Extract Preimage & Fees ──► Destroy Pool & Subscriptions
+```
+
+* **Standardized Connection URIs:** Seamless parsing and generation of `nostr+walletconnect://<wallet_pubkey>?relay=<relay_url>&secret=<client_secret>&lud16=<lightning_address>&encryption=<nip04|nip44>`.
+* **Zero-Leak Subscription Lifecycle:** Immediate resource cleanup upon resolution or timeout, destroying relay pools and event subscriptions to prevent memory retention in long-running agent daemons.
+* **Dual Encryption Handshake:** Transparent fallback support for both legacy NIP-04 shared secrets and next-gen ChaCha20-Poly1305 NIP-44 v2 encryption.
+* **Autonomous MCP Execution:** Exposed as `pay_lightning_nwc` (with alias `pay_with_nwc`) for 1-step settling by autonomous agents.
+
+---
+
+### 4. 🛡️ WoT-Gated Dynamic Mint Mesh & Counterparty Risk Radar (NUT-06)
+
+Cashu Mints carry counterparty risk. NostrPulse acts as an objective, real-time **Radar for Mints** via `auditCashuMint` and `selectBestMint`:
+
+```text
+[ 5-Pillar Mint Risk Auditing & Dynamic Mesh Routing ]
+Target Mint URL ──► Probe NUT-06 /v1/info ──► Extract Admin Contact ──► Resolve WoT & NIP-05 ──► Compute 5-Pillar Mint Score ──► Classify Risk (LOW / MODERATE / HIGH_RISK) ──► Route to Optimal Mint
+```
+
+* **NUT-06 Probe & Capability Auditing:** Evaluates mint uptime, operational response latency, and supported protocol capabilities (`NUT-04` Mint, `NUT-05` Melt, `NUT-07` StateCheck, `NUT-08` FeeReturn, `NUT-10` DLEQ Proofs, `NUT-11` P2PK).
+* **Cryptographic Admin Identity Discovery:** Extracts Nostr operator pubkeys, NIP-05 sovereign domain signatures, or Nostr URIs from contact metadata, resolving transitive WoT graph distance to the 22 Root Anchors.
+* **Tri-Tier Counterparty Risk Profiling (`MintRiskProfile`):**
+  * `LOW` (Trust Score ≥ 75): **`TRUSTED`** (Directly verified operator, low latency, full NUT compliance).
+  * `MODERATE` (Trust Score 45–74): **`USE_WITH_CAP`** (Community mint with acceptable uptime and WoT connectivity).
+  * `HIGH_RISK` (Trust Score < 45 or unverified admin): **`AVOID`** (Anonymous, insecure HTTP, high latency, or isolated keypair).
+* **Autonomous Mesh Selection (`selectBestMint`):** Evaluates candidate mint lists concurrently and dynamically selects the highest-trust, lowest-latency mint for proof creation and payment routing.
+
+---
+
+### 5. 🤖 Autonomous Machine Money Agent (`/agent`)
 
 A dedicated interface demonstrating autonomous agent commerce:
 * **Interactive AI Spender:** Agent equipped with Chaumian eCash wallet capable of paying creators automatically based on quality prompts.
@@ -176,7 +216,7 @@ A dedicated interface demonstrating autonomous agent commerce:
 
 ---
 
-### 4. 🤖 NIP-90 Autonomous DVM Worker & Decentralized Bounty Marketplace
+### 6. 🤖 NIP-90 Autonomous DVM Worker & Decentralized Bounty Marketplace
 
 * **Autonomous Trust Score DVM Bot (`scripts/dvm-worker.ts`):** Background worker that listens for `Kind 5000` job requests tagged with `["t", "trust-score"]`, computes scores, and broadcasts `Kind 6000` with 5-Sat demand (`["amount", "5000"]`).
 * **NIP-90 Client SDK (`src/lib/nip90.ts`):** Utility library offering `publishJobRequest()`, `fetchOpenBounties()`, and `subscribeJobFeedbackAndResult()`.
@@ -227,6 +267,11 @@ A dedicated interface demonstrating autonomous agent commerce:
       <td>✅ Active</td>
     </tr>
     <tr>
+      <td><b>NIP-47</b></td>
+      <td>Nostr Wallet Connect: Direct Lightning payment execution via <code>Kind 23194</code> request & <code>Kind 23195</code> response</td>
+      <td>✅ Active</td>
+    </tr>
+    <tr>
       <td><b>NIP-57</b></td>
       <td>Lightning Zaps (<code>Kind 9734</code> Zap Request & <code>Kind 9735</code> Zap Receipt)</td>
       <td>✅ Active</td>
@@ -264,6 +309,16 @@ A dedicated interface demonstrating autonomous agent commerce:
     <tr>
       <td><b>NUT-04</b></td>
       <td>Minting operations via Lightning BOLT-11 quotes and payment polling</td>
+      <td>✅ Active</td>
+    </tr>
+    <tr>
+      <td><b>NUT-05</b></td>
+      <td>Melting operations: Settle BOLT-11 Lightning invoices via Chaumian eCash proofs</td>
+      <td>✅ Active</td>
+    </tr>
+    <tr>
+      <td><b>NUT-06</b></td>
+      <td>Mint Information & Health endpoint: Supported NUTs, contact pubkeys, and latency probing</td>
       <td>✅ Active</td>
     </tr>
   </tbody>
@@ -316,8 +371,14 @@ npx -y nostrpulse-mcp
 
 ### 4. Run Verification & Test Suites
 ```bash
-# Test full MCP Stdio JSON-RPC integration & tool execution
+# Test full MCP Stdio JSON-RPC integration (all 5 core tools discovered & tested)
 npx tsx scripts/test-mcp-stdio.ts
+
+# Test NIP-47 NWC payment execution, URI parsing, and timeout guards
+npx tsx scripts/test-nwc-pay.ts
+
+# Test WoT-Gated Cashu Mint Mesh (Testnut & Minibits /v1/info audit & trust verification)
+npx tsx scripts/test-mint-mesh.ts
 
 # Test autonomous Mini-Agent calling NostrPulse MCP via Gemini / AI SDK
 npx tsx scripts/test-mini-agent.ts
@@ -325,11 +386,8 @@ npx tsx scripts/test-mini-agent.ts
 # Test self-contained NIP-59 Gift Wrap encryption & decryption
 npx tsx scripts/test-nip59-encryption.ts
 
-# Test BaseExecutor subscription lifecycle (zero memory leaks)
-npx tsx scripts/test-executor-lifecycle.ts
-
-# Run the autonomous NIP-90 DVM background daemon
-npx tsx scripts/dvm-worker.ts
+# Strict TypeScript type check (zero errors)
+npx tsc --noEmit
 ```
 
 ---
@@ -343,8 +401,10 @@ npx tsx scripts/dvm-worker.ts
 - [x] **Phase 5:** NIP-90 Data Vending Machines: Autonomous Trust Score worker bot & decentralized `/bounties` marketplace.
 - [x] **Phase 6:** 1-Tap Cashu NutZap settlement for deliverable acceptance & instant payout.
 - [x] **Phase 7:** MCP Stdio Server & npm package deployment (`nostrpulse-mcp` on npm registry).
-- [ ] **Phase 8:** NUT-11 (P2PK) locks for deterministic, recipient-locked eCash NutZaps.
-- [ ] **Phase 9:** Standalone `@nostrpulse/sdk` for seamless integration into third-party Nostr clients.
+- [x] **Phase 8:** NIP-47 Nostr Wallet Connect (NWC) direct Lightning rail for autonomous node settlement.
+- [x] **Phase 9:** WoT-Gated Dynamic Mint Mesh & NUT-06 5-Pillar Counterparty Risk Radar.
+- [ ] **Phase 10:** NUT-11 (P2PK) locks for deterministic, recipient-locked eCash NutZaps.
+- [ ] **Phase 11:** Standalone `@nostrpulse/sdk` for seamless integration into third-party Nostr clients.
 
 ---
 
