@@ -7,6 +7,9 @@ export default defineConfig({
   format: ["esm"],
   target: "node20",
   clean: true,
+  banner: {
+    js: "#!/usr/bin/env node",
+  },
   outExtension() {
     return {
       js: ".js",

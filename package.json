@@ -4,7 +4,7 @@
   "description": "Autonomous Payment & Sybil-Resistant Trust Layer for AI Agents via MCP",
   "main": "./dist/mcp-entry.js",
   "bin": {
-    "nostrpulse-mcp": "dist/mcp-entry.js"
+    "nostrpulse-mcp": "./dist/mcp-entry.js"
   },
   "files": [
     "dist"
