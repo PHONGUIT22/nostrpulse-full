@@ -9,6 +9,9 @@
  * 1. check_trust_score: Anti-Sybil Trust Score & Web-of-Trust graph metrics.
  * 2. pay_cashu_nutzap: Value-4-Value NIP-61 Cashu NutZap eCash payments.
  * 3. request_nip90_job: Distributed NIP-90 DVM computation with local fallback.
+ * 4. pay_lightning_nwc: Direct Lightning Network payment via NIP-47 Nostr Wallet Connect.
+ * 5. audit_cashu_mint: NUT-06 health and 5-Pillar Trust Score audit for Cashu Mints.
+ * 6. route_cashu_mint: WoT-Gated Dynamic Mint Mesh routing.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -32,6 +35,9 @@ import {
 } from "./lib/cashu";
 import { requestDvmAnalyticsWithFallback } from "./lib/dvm";
 import { globalToolRegistry } from "./lib/tool-registry";
+import { payWithNWC } from "./lib/nwc";
+import { auditCashuMint, routeCashuMint } from "./lib/mint-mesh";
+
 
 // Auto-load environment variables if available
 try {
@@ -217,7 +223,16 @@ mcpServer.tool(
         };
       }
 
-      const cleanMint = (mintUrl || DEFAULT_CASHU_MINT).trim();
+      let cleanMint = mintUrl?.trim();
+      if (!cleanMint) {
+        try {
+          const routeRes = await routeCashuMint({ amountSats });
+          if (routeRes.meshHealthy && routeRes.selectedMint?.mintUrl) {
+            cleanMint = routeRes.selectedMint.mintUrl;
+          }
+        } catch {}
+      }
+      cleanMint = (cleanMint || DEFAULT_CASHU_MINT).trim();
 
       // Case A: A pre-funded Cashu token was provided -> Execute NutZap immediately
       if (cashuToken && cashuToken.trim()) {
@@ -398,8 +413,217 @@ mcpServer.tool(
   }
 );
 
+// =============================================================================
+// Tool 4: pay_lightning_nwc (NIP-47 Direct Lightning Rail)
+// =============================================================================
+const nwcToolHandler = async ({ invoice, nwcUri, timeoutMs, amountMsat }: {
+  invoice: string;
+  nwcUri?: string;
+  timeoutMs?: number;
+  amountMsat?: number;
+}) => {
+  try {
+    const result = await payWithNWC({
+      invoice,
+      nwcUri,
+      timeoutMs: timeoutMs ?? 15000,
+      amountMsat,
+    });
+
+    if (result.status === "success") {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                status: "settled",
+                preimage: result.preimage,
+                feesPaidSats: result.fees_paid,
+                responseEventId: result.responseEventId,
+                message: `Lightning payment settled successfully via NWC! Preimage: ${result.preimage}`,
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    }
+
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify(
+            {
+              success: false,
+              status: result.status,
+              error: result.error,
+              errorCode: result.errorCode,
+              responseEventId: result.responseEventId,
+            },
+            null,
+            2
+          ),
+        },
+      ],
+      isError: true,
+    };
+  } catch (err: any) {
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: `Error executing NWC payment: ${err?.message || String(err)}`,
+        },
+      ],
+      isError: true,
+    };
+  }
+};
+
+const nwcToolSchema = {
+  invoice: z
+    .string()
+    .describe("BOLT-11 Lightning invoice."),
+  nwcUri: z
+    .string()
+    .optional()
+    .describe(
+      "Explicit NWC connection URI (falls back to env NWC_CONNECTION_URI)."
+    ),
+  timeoutMs: z
+    .number()
+    .int()
+    .min(1000)
+    .max(60000)
+    .optional()
+    .describe("Timeout in milliseconds (default: 15000)"),
+  amountMsat: z
+    .number()
+    .int()
+    .min(1)
+    .optional()
+    .describe("Optional amount in millisatoshis for amountless invoices"),
+};
+
+mcpServer.tool(
+  "pay_lightning_nwc",
+  "Settle BOLT-11 Lightning invoices directly through an autonomous node via NIP-47 Nostr Wallet Connect (Alby Hub, Phoenixd, Umbrel).",
+  nwcToolSchema,
+  nwcToolHandler
+);
+
+mcpServer.tool(
+  "pay_with_nwc",
+  "Alias for pay_lightning_nwc: settle BOLT-11 Lightning invoices via NIP-47 NWC.",
+  nwcToolSchema,
+  nwcToolHandler
+);
+
+// =============================================================================
+// Tool 5: audit_cashu_mint
+// =============================================================================
+mcpServer.tool(
+  "audit_cashu_mint",
+  "Audit and evaluate counterparty risk of a Cashu eCash Mint using Web-of-Trust graph distance, NIP-05 sovereign domain validation, and admin reputation.",
+  {
+    mintUrl: z
+      .string()
+      .describe("Target Cashu mint URL (e.g., https://mint.minibits.cash/Bitcoin)."),
+    forceRefresh: z
+      .boolean()
+      .optional()
+      .describe("Bypass in-memory audit cache and perform fresh live probe (default: false)"),
+  },
+  async ({ mintUrl, forceRefresh }) => {
+    try {
+      await initDatabase();
+      const audit = await auditCashuMint(mintUrl, forceRefresh ?? false);
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(audit, null, 2),
+          },
+        ],
+      };
+    } catch (err: any) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error auditing Cashu Mint: ${err?.message || String(err)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+// =============================================================================
+// Tool 6: route_cashu_mint
+// =============================================================================
+mcpServer.tool(
+  "route_cashu_mint",
+  "Dynamically discover and route to the highest-trust, lowest-latency Cashu Mint from the WoT-Gated Dynamic Mint Mesh.",
+  {
+    amountSats: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe("Intended payment or minting amount in Satoshis"),
+    preferredMint: z
+      .string()
+      .optional()
+      .describe("Optional preferred mint URL to prioritize if verified and healthy"),
+    minTrustScore: z
+      .number()
+      .int()
+      .min(0)
+      .max(100)
+      .optional()
+      .describe("Minimum WoT Trust Score required to pass the security gate (default: 45)"),
+  },
+  async ({ amountSats, preferredMint, minTrustScore }) => {
+    try {
+      await initDatabase();
+      const routing = await routeCashuMint({
+        amountSats,
+        preferredMint,
+        minTrustScore: minTrustScore ?? 45,
+      });
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(routing, null, 2),
+          },
+        ],
+      };
+    } catch (err: any) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error routing Cashu Mint: ${err?.message || String(err)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
 // Register tools into globalToolRegistry as well for interoperability
 globalToolRegistry.registerToMcpServer(mcpServer);
+
 
 /**
  * Connect to standard stdio JSON-RPC transport

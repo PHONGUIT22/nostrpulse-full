@@ -193,6 +193,10 @@ export class ToolRegistry {
    */
   public registerToMcpServer(server: McpServer): void {
     for (const tool of this.tools.values()) {
+      if ((server as any)._registeredTools?.[tool.name]) {
+        continue;
+      }
+
       const zodRawShape = this.mapJsonSchemaToZod(tool.inputSchema);
 
       server.tool(
@@ -254,3 +258,98 @@ export class ToolRegistry {
 
 // Global default singleton registry instance
 export const globalToolRegistry = new ToolRegistry();
+
+// Register core NIP-47 and Dynamic Mint Mesh tools
+globalToolRegistry.registerTool({
+  name: "pay_lightning_nwc",
+  description:
+    "Settle BOLT-11 Lightning invoices directly through an autonomous node via NIP-47 Nostr Wallet Connect (Alby Hub, Phoenixd, Umbrel).",
+  inputSchema: {
+    type: "object",
+    properties: {
+      invoice: {
+        type: "string",
+        description: "BOLT-11 Lightning invoice.",
+      },
+      nwcUri: {
+        type: "string",
+        description:
+          "Explicit NWC connection URI (falls back to env NWC_CONNECTION_URI).",
+      },
+      timeoutMs: {
+        type: "integer",
+        description: "Timeout in milliseconds (default: 15000)",
+      },
+      amountMsat: {
+        type: "integer",
+        description: "Optional amount in millisatoshis for amountless invoices",
+      },
+    },
+    required: ["invoice"],
+  },
+  execute: async (args: Record<string, any>) => {
+    const { payWithNWC } = await import("./nwc");
+    return payWithNWC({
+      invoice: args.invoice,
+      nwcUri: args.nwcUri,
+      timeoutMs: args.timeoutMs,
+      amountMsat: args.amountMsat,
+    });
+  },
+});
+
+globalToolRegistry.registerTool({
+  name: "audit_cashu_mint",
+  description:
+    "Audit and evaluate counterparty risk of a Cashu eCash Mint using Web-of-Trust graph distance, NIP-05 sovereign domain validation, and admin reputation.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      mintUrl: {
+        type: "string",
+        description: "Target Cashu mint URL (e.g., https://mint.minibits.cash/Bitcoin).",
+      },
+      forceRefresh: {
+        type: "boolean",
+        description: "Bypass in-memory audit cache and perform fresh live probe (default: false)",
+      },
+    },
+    required: ["mintUrl"],
+  },
+  execute: async (args: Record<string, any>) => {
+    const { auditCashuMint } = await import("./mint-mesh");
+    return auditCashuMint(args.mintUrl, args.forceRefresh);
+  },
+});
+
+globalToolRegistry.registerTool({
+  name: "route_cashu_mint",
+  description:
+    "Dynamically discover and route to the highest-trust, lowest-latency Cashu Mint from the WoT-Gated Dynamic Mint Mesh.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      amountSats: {
+        type: "integer",
+        description: "Intended payment or minting amount in Satoshis",
+      },
+      preferredMint: {
+        type: "string",
+        description: "Optional preferred mint URL to prioritize if verified and healthy",
+      },
+      minTrustScore: {
+        type: "integer",
+        description: "Minimum WoT Trust Score required to pass the security gate (default: 45)",
+      },
+    },
+  },
+  execute: async (args: Record<string, any>) => {
+    const { routeCashuMint } = await import("./mint-mesh");
+    return routeCashuMint({
+      amountSats: args.amountSats,
+      preferredMint: args.preferredMint,
+      minTrustScore: args.minTrustScore,
+    });
+  },
+});
+
