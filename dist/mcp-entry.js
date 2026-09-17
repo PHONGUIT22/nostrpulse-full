@@ -1,16 +1,41 @@
 #!/usr/bin/env node
 import {
+  getSpendingSummary,
+  recordAgentSpending
+} from "./chunk-KPHCIVB6.js";
+import {
   DEFAULT_CASHU_MINT,
   auditCashuMint,
-  calculateTrustScore,
   createCashuMintQuote,
-  encodeNpub,
-  getWebOfTrustDistance,
-  normalizePubkey,
   parseCashuToken,
   routeCashuMint,
   sendCashuNutZap
-} from "./chunk-7BHTCYY4.js";
+} from "./chunk-5ESBNA4V.js";
+import {
+  MAJOR_INDEXER_RELAYS,
+  decodeBolt11AmountSats
+} from "./chunk-JTEXOGO4.js";
+import "./chunk-CDTDPUJF.js";
+import {
+  assertSpendingAllowed,
+  getRolling24hSpend,
+  getSpendingPolicy
+} from "./chunk-C3LOZ2XO.js";
+import {
+  calculateTrustScore
+} from "./chunk-TEBCT7SR.js";
+import {
+  encodeNpub,
+  getWebOfTrustDistance,
+  normalizePubkey
+} from "./chunk-RI52V5BR.js";
+import {
+  getAgentTelemetrySummary,
+  getTelemetryOverview,
+  logAgentEvent,
+  logTelemetryEvent,
+  queryTelemetryEvents
+} from "./chunk-3V5XEVMQ.js";
 import {
   accumulateZapTotals,
   getCreatorFromDb,
@@ -19,7 +44,10 @@ import {
   initDatabase,
   recordZapEdge,
   upsertZapTotals
-} from "./chunk-EHO7YRXO.js";
+} from "./chunk-JHYB5MLN.js";
+import {
+  getOrInitAgentIdentity
+} from "./chunk-OZL5FZ3S.js";
 import {
   payWithNWC
 } from "./chunk-ZQA6N3HW.js";
@@ -36,19 +64,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z as z2 } from "zod";
 
 // src/lib/dvm.ts
-import { finalizeEvent as finalizeEvent2, generateSecretKey as generateSecretKey2, nip19 as nip192 } from "nostr-tools";
-
-// src/lib/indexer.ts
-import { SimplePool } from "nostr-tools/pool";
-import { nip19 } from "nostr-tools";
-var MAJOR_INDEXER_RELAYS = [
-  "wss://relay.damus.io",
-  "wss://nos.lol",
-  "wss://relay.nostr.band",
-  "wss://purplerelay.com",
-  "wss://relay.primal.net",
-  "wss://nostr.mom"
-];
+import { finalizeEvent as finalizeEvent2, generateSecretKey as generateSecretKey2, nip19 } from "nostr-tools";
 
 // src/lib/tool-registry.ts
 import { z } from "zod";
@@ -248,13 +264,51 @@ globalToolRegistry.registerTool({
     required: ["invoice"]
   },
   execute: async (args) => {
+    const { assertSpendingAllowed: assertSpendingAllowed2 } = await import("./guardrails-FH5YXAGE.js");
+    const { logAgentEvent: logAgentEvent2 } = await import("./telemetry-A6BRHBKS.js");
+    const { decodeBolt11AmountSats: decodeBolt11AmountSats2 } = await import("./indexer-DVTUBL7Z.js");
     const { payWithNWC: payWithNWC2 } = await import("./nwc-NCU3WSOP.js");
-    return payWithNWC2({
+    const amountSats = args.amountMsat && args.amountMsat > 0 ? Math.round(args.amountMsat / 1e3) : decodeBolt11AmountSats2(args.invoice) || 1;
+    const guardrail = await assertSpendingAllowed2({
+      amountSats,
+      rail: "nwc"
+    });
+    if (!guardrail.allowed) {
+      await logAgentEvent2({
+        type: "radar_block",
+        data: {
+          amountSats,
+          rail: "nwc",
+          invoice: args.invoice,
+          reason: guardrail.reason
+        }
+      });
+      return {
+        status: "blocked_by_guardrails",
+        reason: guardrail.reason
+      };
+    }
+    const res = await payWithNWC2({
       invoice: args.invoice,
       nwcUri: args.nwcUri,
       timeoutMs: args.timeoutMs,
       amountMsat: args.amountMsat
     });
+    if (res.status === "success") {
+      await logAgentEvent2({
+        type: "payment",
+        data: {
+          amountSats,
+          rail: "nwc",
+          invoice: args.invoice,
+          preimage: res.preimage,
+          feesPaidSats: res.fees_paid,
+          responseEventId: res.responseEventId,
+          status: "settled"
+        }
+      });
+    }
+    return res;
   }
 });
 globalToolRegistry.registerTool({
@@ -275,7 +329,7 @@ globalToolRegistry.registerTool({
     required: ["mintUrl"]
   },
   execute: async (args) => {
-    const { auditCashuMint: auditCashuMint2 } = await import("./mint-mesh-OJIZLGUK.js");
+    const { auditCashuMint: auditCashuMint2 } = await import("./mint-mesh-XAYJB3MA.js");
     return auditCashuMint2(args.mintUrl, args.forceRefresh);
   }
 });
@@ -300,12 +354,83 @@ globalToolRegistry.registerTool({
     }
   },
   execute: async (args) => {
-    const { routeCashuMint: routeCashuMint2 } = await import("./mint-mesh-OJIZLGUK.js");
+    const { routeCashuMint: routeCashuMint2 } = await import("./mint-mesh-XAYJB3MA.js");
     return routeCashuMint2({
       amountSats: args.amountSats,
       preferredMint: args.preferredMint,
       minTrustScore: args.minTrustScore
     });
+  }
+});
+globalToolRegistry.registerTool({
+  name: "get_agent_identity",
+  description: "Retrieve active autonomous AI agent cryptographic public identity (pubkey, npub, identity source, and ephemeral status).",
+  inputSchema: {
+    type: "object",
+    properties: {}
+  },
+  execute: async () => {
+    const { getOrInitAgentIdentity: getOrInitAgentIdentity2 } = await import("./identity-manager-R4GKAITL.js");
+    const identity = getOrInitAgentIdentity2();
+    return {
+      pubkey: identity.pubkey,
+      npub: identity.npub,
+      source: identity.source,
+      isEphemeral: identity.isEphemeral,
+      createdAt: identity.createdAt
+    };
+  }
+});
+globalToolRegistry.registerTool({
+  name: "get_spending_guardrails",
+  description: "Query current AI agent spending guardrails, daily budget, 24-hour satoshis spent, remaining allowance, and per-transaction limits.",
+  inputSchema: {
+    type: "object",
+    properties: {}
+  },
+  execute: async () => {
+    const { getSpendingSummary: getSpendingSummary2 } = await import("./spending-guardrails-MTQEJFJJ.js");
+    return getSpendingSummary2();
+  }
+});
+globalToolRegistry.registerTool({
+  name: "get_agent_telemetry",
+  description: "Inspect autonomous agent spending metrics, rolling 24h budget allowance, blocked Sybil threats, and recent telemetry events.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      timeframeHours: {
+        type: "integer",
+        description: "Rolling window in hours (default: 24)"
+      },
+      limit: {
+        type: "integer",
+        description: "Maximum number of telemetry events to retrieve (default: 20)"
+      }
+    }
+  },
+  execute: async (args) => {
+    const { getSpendingPolicy: getSpendingPolicy2, getRolling24hSpend: getRolling24hSpend2 } = await import("./guardrails-FH5YXAGE.js");
+    const { getAgentTelemetrySummary: getAgentTelemetrySummary2, getTelemetryOverview: getTelemetryOverview2, queryTelemetryEvents: queryTelemetryEvents2 } = await import("./telemetry-A6BRHBKS.js");
+    const hours = Number(args.timeframeHours) || 24;
+    const limit = Number(args.limit) || 20;
+    const policy = getSpendingPolicy2();
+    const spentTodaySats = await getRolling24hSpend2();
+    const remainingSats = Math.max(0, policy.dailyLimitSats - spentTodaySats);
+    const summary = await getAgentTelemetrySummary2(hours);
+    const overview = await getTelemetryOverview2();
+    const events = await queryTelemetryEvents2({ limit });
+    return {
+      dailyLimitSats: policy.dailyLimitSats,
+      spentTodaySats,
+      remainingSats,
+      totalSpentSats: summary.totalSpentSats,
+      txCount: summary.txCount,
+      blockedSybilAttacks: summary.blockedSybilAttacks,
+      recentEvents: summary.recentEvents.slice(0, limit),
+      events,
+      overview
+    };
   }
 });
 
@@ -526,7 +651,7 @@ function resolveSecretKey(key) {
     const trimmed = key.trim();
     if (trimmed.startsWith("nsec1")) {
       try {
-        const decoded = nip192.decode(trimmed);
+        const decoded = nip19.decode(trimmed);
         if (decoded.type === "nsec") return decoded.data;
       } catch {
       }
@@ -783,6 +908,13 @@ mcpServer.tool(
           sybil_filtered_sats: sybilFilteredSats
         }
       };
+      await logTelemetryEvent({
+        eventType: "radar.trust_score.checked",
+        category: "radar",
+        status: "success",
+        targetPubkey: hex,
+        metadata: { score: payload.score, tier: payload.tier, distance: payload.wot.distance }
+      });
       return {
         content: [
           {
@@ -846,6 +978,46 @@ mcpServer.tool(
         }
       }
       cleanMint = (cleanMint || DEFAULT_CASHU_MINT).trim();
+      const guardrail = await assertSpendingAllowed({
+        amountSats,
+        recipientPubkey: hexRecipient,
+        rail: "nutzap"
+      });
+      if (!guardrail.allowed) {
+        await logAgentEvent({
+          type: "radar_block",
+          data: {
+            amountSats,
+            recipient: hexRecipient,
+            rail: "nutzap",
+            reason: guardrail.reason
+          }
+        });
+        await logTelemetryEvent({
+          eventType: "payment.guardrail_blocked",
+          category: "payment",
+          status: "blocked",
+          targetPubkey: hexRecipient,
+          amountSats,
+          metadata: { rail: "nutzap", reason: guardrail.reason },
+          error: guardrail.reason
+        });
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  status: "blocked_by_guardrails",
+                  reason: guardrail.reason
+                },
+                null,
+                2
+              )
+            }
+          ]
+        };
+      }
       if (cashuToken && cashuToken.trim()) {
         const parsedToken = parseCashuToken(cashuToken.trim());
         if (parsedToken.totalAmountSats < amountSats) {
@@ -873,13 +1045,41 @@ mcpServer.tool(
           mintUrl: cleanMint
         });
         await Promise.allSettled([
+          recordAgentSpending({
+            amountSats,
+            rail: "cashu",
+            recipientPubkey: hexRecipient,
+            eventId: zapResult.id,
+            memo: comment
+          }),
+          logAgentEvent({
+            type: "payment",
+            data: {
+              amountSats,
+              rail: "nutzap",
+              recipient: hexRecipient,
+              mint: cleanMint,
+              eventId: zapResult.id,
+              status: "settled"
+            }
+          }),
           accumulateZapTotals({
             pubkey: hexRecipient,
             addTotalSats: amountSats,
             addValidSats: amountSats
           }),
-          recordZapEdge("mcp_agent_sender", hexRecipient, amountSats)
+          recordZapEdge("mcp_agent_sender", hexRecipient, amountSats),
+          logTelemetryEvent({
+            eventType: "payment.nutzap.settled",
+            category: "payment",
+            status: "success",
+            targetPubkey: hexRecipient,
+            amountSats,
+            metadata: { eventId: zapResult.id, mintUrl: cleanMint }
+          })
         ]);
+        const current24h = await getRolling24hSpend();
+        const policy = getSpendingPolicy();
         const responseData = {
           success: true,
           status: "settled",
@@ -888,6 +1088,9 @@ mcpServer.tool(
           amountSats,
           recipient: hexRecipient,
           changeToken: zapResult.changeToken,
+          guardrail: {
+            remainingDailySats: Math.max(0, policy.dailyLimitSats - current24h)
+          },
           message: `Successfully delivered ${amountSats.toLocaleString()} Sats NutZap to ${hexRecipient}!`
         };
         return {
@@ -989,6 +1192,45 @@ mcpServer.tool(
 );
 var nwcToolHandler = async ({ invoice, nwcUri, timeoutMs, amountMsat }) => {
   try {
+    const amountSats = amountMsat && amountMsat > 0 ? Math.round(amountMsat / 1e3) : decodeBolt11AmountSats(invoice) || 1;
+    const guardrail = await assertSpendingAllowed({
+      amountSats,
+      rail: "nwc"
+    });
+    if (!guardrail.allowed) {
+      await logAgentEvent({
+        type: "radar_block",
+        data: {
+          amountSats,
+          rail: "nwc",
+          invoice,
+          reason: guardrail.reason
+        }
+      });
+      await logTelemetryEvent({
+        eventType: "payment.guardrail_blocked",
+        category: "payment",
+        status: "blocked",
+        amountSats,
+        metadata: { rail: "nwc", reason: guardrail.reason },
+        error: guardrail.reason
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                status: "blocked_by_guardrails",
+                reason: guardrail.reason
+              },
+              null,
+              2
+            )
+          }
+        ]
+      };
+    }
     const result = await payWithNWC({
       invoice,
       nwcUri,
@@ -996,6 +1238,35 @@ var nwcToolHandler = async ({ invoice, nwcUri, timeoutMs, amountMsat }) => {
       amountMsat
     });
     if (result.status === "success") {
+      await Promise.allSettled([
+        recordAgentSpending({
+          amountSats,
+          rail: "lightning_nwc",
+          eventId: result.responseEventId,
+          memo: `Lightning NWC Payment (Preimage: ${result.preimage?.slice(0, 10)}...)`
+        }),
+        logAgentEvent({
+          type: "payment",
+          data: {
+            amountSats,
+            rail: "nwc",
+            invoice,
+            preimage: result.preimage,
+            feesPaidSats: result.fees_paid,
+            responseEventId: result.responseEventId,
+            status: "settled"
+          }
+        }),
+        logTelemetryEvent({
+          eventType: "payment.nwc.settled",
+          category: "payment",
+          status: "success",
+          amountSats,
+          metadata: { preimage: result.preimage, feesPaid: result.fees_paid }
+        })
+      ]);
+      const current24h = await getRolling24hSpend();
+      const policy = getSpendingPolicy();
       return {
         content: [
           {
@@ -1007,6 +1278,9 @@ var nwcToolHandler = async ({ invoice, nwcUri, timeoutMs, amountMsat }) => {
                 preimage: result.preimage,
                 feesPaidSats: result.fees_paid,
                 responseEventId: result.responseEventId,
+                guardrail: {
+                  remainingDailySats: Math.max(0, policy.dailyLimitSats - current24h)
+                },
                 message: `Lightning payment settled successfully via NWC! Preimage: ${result.preimage}`
               },
               null,
@@ -1016,6 +1290,14 @@ var nwcToolHandler = async ({ invoice, nwcUri, timeoutMs, amountMsat }) => {
         ]
       };
     }
+    await logTelemetryEvent({
+      eventType: "payment.nwc.failed",
+      category: "payment",
+      status: "failed",
+      amountSats,
+      error: result.error,
+      metadata: { errorCode: result.errorCode }
+    });
     return {
       content: [
         {
@@ -1078,6 +1360,12 @@ mcpServer.tool(
     try {
       await initDatabase();
       const audit = await auditCashuMint(mintUrl, forceRefresh ?? false);
+      await logTelemetryEvent({
+        eventType: "mint.audited",
+        category: "mint",
+        status: audit.isOnline ? "success" : "failed",
+        metadata: { mintUrl, trustScore: audit.trustScore, riskLevel: audit.riskLevel }
+      });
       return {
         content: [
           {
@@ -1115,6 +1403,13 @@ mcpServer.tool(
         preferredMint,
         minTrustScore: minTrustScore ?? 45
       });
+      await logTelemetryEvent({
+        eventType: "mint.routed",
+        category: "mint",
+        status: routing.meshHealthy ? "success" : "failed",
+        amountSats,
+        metadata: { selectedMint: routing.selectedMint?.mintUrl }
+      });
       return {
         content: [
           {
@@ -1129,6 +1424,130 @@ mcpServer.tool(
           {
             type: "text",
             text: `Error routing Cashu Mint: ${err?.message || String(err)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
+mcpServer.tool(
+  "get_agent_identity",
+  "Retrieve active autonomous AI agent cryptographic public identity (pubkey, npub, identity source, and ephemeral status).",
+  {},
+  async () => {
+    try {
+      const identity = getOrInitAgentIdentity();
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                pubkey: identity.pubkey,
+                npub: identity.npub,
+                source: identity.source,
+                isEphemeral: identity.isEphemeral,
+                createdAt: identity.createdAt
+              },
+              null,
+              2
+            )
+          }
+        ]
+      };
+    } catch (err) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error resolving agent identity: ${err?.message || String(err)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
+mcpServer.tool(
+  "get_spending_guardrails",
+  "Query current AI agent spending guardrails, daily budget, 24-hour satoshis spent, remaining allowance, and per-transaction limits.",
+  {},
+  async () => {
+    try {
+      await initDatabase();
+      const summary = await getSpendingSummary();
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(summary, null, 2)
+          }
+        ]
+      };
+    } catch (err) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error inspecting spending guardrails: ${err?.message || String(err)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
+mcpServer.tool(
+  "get_agent_telemetry",
+  "Inspect autonomous agent spending metrics, rolling 24h budget allowance, blocked Sybil threats, and recent telemetry events.",
+  {
+    timeframeHours: z2.number().int().min(1).max(720).optional().describe("Rolling window in hours to inspect (default: 24)"),
+    limit: z2.number().int().min(1).max(100).optional().describe("Maximum number of telemetry events to retrieve (default: 20)")
+  },
+  async ({ timeframeHours, limit }) => {
+    try {
+      await initDatabase();
+      const hours = timeframeHours ?? 24;
+      const policy = getSpendingPolicy();
+      const spentTodaySats = await getRolling24hSpend();
+      const remainingSats = Math.max(0, policy.dailyLimitSats - spentTodaySats);
+      const summary = await getAgentTelemetrySummary(hours);
+      const overview = await getTelemetryOverview();
+      const events = await queryTelemetryEvents({ limit: limit ?? 20 });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                dailyLimitSats: policy.dailyLimitSats,
+                spentTodaySats,
+                remainingSats,
+                totalSpentSats: summary.totalSpentSats,
+                txCount: summary.txCount,
+                blockedSybilAttacks: summary.blockedSybilAttacks,
+                recentEvents: summary.recentEvents.slice(0, limit ?? 20),
+                events,
+                overview: {
+                  totalVolumeSats: overview.totalVolumeSats,
+                  totalEvents: overview.totalEvents,
+                  successRatePercent: overview.successRatePercent,
+                  byCategory: overview.byCategory
+                }
+              },
+              null,
+              2
+            )
+          }
+        ]
+      };
+    } catch (err) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error retrieving agent telemetry: ${err?.message || String(err)}`
           }
         ],
         isError: true

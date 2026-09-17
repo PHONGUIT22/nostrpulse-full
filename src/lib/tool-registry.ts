@@ -288,13 +288,61 @@ globalToolRegistry.registerTool({
     required: ["invoice"],
   },
   execute: async (args: Record<string, any>) => {
+    const { assertSpendingAllowed } = await import("./guardrails");
+    const { logAgentEvent } = await import("./telemetry");
+    const { decodeBolt11AmountSats } = await import("./indexer");
     const { payWithNWC } = await import("./nwc");
-    return payWithNWC({
+
+    const amountSats =
+      args.amountMsat && args.amountMsat > 0
+        ? Math.round(args.amountMsat / 1000)
+        : decodeBolt11AmountSats(args.invoice) || 1;
+
+    const guardrail = await assertSpendingAllowed({
+      amountSats,
+      rail: "nwc",
+    });
+
+    if (!guardrail.allowed) {
+      await logAgentEvent({
+        type: "radar_block",
+        data: {
+          amountSats,
+          rail: "nwc",
+          invoice: args.invoice,
+          reason: guardrail.reason,
+        },
+      });
+
+      return {
+        status: "blocked_by_guardrails",
+        reason: guardrail.reason,
+      };
+    }
+
+    const res = await payWithNWC({
       invoice: args.invoice,
       nwcUri: args.nwcUri,
       timeoutMs: args.timeoutMs,
       amountMsat: args.amountMsat,
     });
+
+    if (res.status === "success") {
+      await logAgentEvent({
+        type: "payment",
+        data: {
+          amountSats,
+          rail: "nwc",
+          invoice: args.invoice,
+          preimage: res.preimage,
+          feesPaidSats: res.fees_paid,
+          responseEventId: res.responseEventId,
+          status: "settled",
+        },
+      });
+    }
+
+    return res;
   },
 });
 
@@ -352,4 +400,86 @@ globalToolRegistry.registerTool({
     });
   },
 });
+
+globalToolRegistry.registerTool({
+  name: "get_agent_identity",
+  description:
+    "Retrieve active autonomous AI agent cryptographic public identity (pubkey, npub, identity source, and ephemeral status).",
+  inputSchema: {
+    type: "object",
+    properties: {},
+  },
+  execute: async () => {
+    const { getOrInitAgentIdentity } = await import("./identity-manager");
+    const identity = getOrInitAgentIdentity();
+    return {
+      pubkey: identity.pubkey,
+      npub: identity.npub,
+      source: identity.source,
+      isEphemeral: identity.isEphemeral,
+      createdAt: identity.createdAt,
+    };
+  },
+});
+
+globalToolRegistry.registerTool({
+  name: "get_spending_guardrails",
+  description:
+    "Query current AI agent spending guardrails, daily budget, 24-hour satoshis spent, remaining allowance, and per-transaction limits.",
+  inputSchema: {
+    type: "object",
+    properties: {},
+  },
+  execute: async () => {
+    const { getSpendingSummary } = await import("./spending-guardrails");
+    return getSpendingSummary();
+  },
+});
+
+globalToolRegistry.registerTool({
+  name: "get_agent_telemetry",
+  description:
+    "Inspect autonomous agent spending metrics, rolling 24h budget allowance, blocked Sybil threats, and recent telemetry events.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      timeframeHours: {
+        type: "integer",
+        description: "Rolling window in hours (default: 24)",
+      },
+      limit: {
+        type: "integer",
+        description: "Maximum number of telemetry events to retrieve (default: 20)",
+      },
+    },
+  },
+  execute: async (args: Record<string, any>) => {
+    const { getSpendingPolicy, getRolling24hSpend } = await import("./guardrails");
+    const { getAgentTelemetrySummary, getTelemetryOverview, queryTelemetryEvents } = await import("./telemetry");
+
+    const hours = Number(args.timeframeHours) || 24;
+    const limit = Number(args.limit) || 20;
+
+    const policy = getSpendingPolicy();
+    const spentTodaySats = await getRolling24hSpend();
+    const remainingSats = Math.max(0, policy.dailyLimitSats - spentTodaySats);
+
+    const summary = await getAgentTelemetrySummary(hours);
+    const overview = await getTelemetryOverview();
+    const events = await queryTelemetryEvents({ limit });
+
+    return {
+      dailyLimitSats: policy.dailyLimitSats,
+      spentTodaySats,
+      remainingSats,
+      totalSpentSats: summary.totalSpentSats,
+      txCount: summary.txCount,
+      blockedSybilAttacks: summary.blockedSybilAttacks,
+      recentEvents: summary.recentEvents.slice(0, limit),
+      events,
+      overview,
+    };
+  },
+});
+
 

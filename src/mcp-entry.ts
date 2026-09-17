@@ -37,6 +37,17 @@ import { requestDvmAnalyticsWithFallback } from "./lib/dvm";
 import { globalToolRegistry } from "./lib/tool-registry";
 import { payWithNWC } from "./lib/nwc";
 import { auditCashuMint, routeCashuMint } from "./lib/mint-mesh";
+import { getOrInitAgentIdentity, getAgentPubkey } from "./lib/identity-manager";
+import { checkSpendingAllowed, recordAgentSpending, getSpendingSummary } from "./lib/spending-guardrails";
+import { assertSpendingAllowed, getSpendingPolicy, getRolling24hSpend } from "./lib/guardrails";
+import {
+  logTelemetryEvent,
+  getTelemetryOverview,
+  queryTelemetryEvents,
+  logAgentEvent,
+  getAgentTelemetrySummary,
+} from "./lib/telemetry";
+import { decodeBolt11AmountSats } from "./lib/indexer";
 
 
 // Auto-load environment variables if available
@@ -150,6 +161,14 @@ mcpServer.tool(
         },
       };
 
+      await logTelemetryEvent({
+        eventType: "radar.trust_score.checked",
+        category: "radar",
+        status: "success",
+        targetPubkey: hex,
+        metadata: { score: payload.score, tier: payload.tier, distance: payload.wot.distance },
+      });
+
       return {
         content: [
           {
@@ -234,6 +253,51 @@ mcpServer.tool(
       }
       cleanMint = (cleanMint || DEFAULT_CASHU_MINT).trim();
 
+      // Guardrails Check: Enforce daily allowance, single-tx cap, and recipient trust score
+      const guardrail = await assertSpendingAllowed({
+        amountSats,
+        recipientPubkey: hexRecipient,
+        rail: "nutzap",
+      });
+
+      if (!guardrail.allowed) {
+        await logAgentEvent({
+          type: "radar_block",
+          data: {
+            amountSats,
+            recipient: hexRecipient,
+            rail: "nutzap",
+            reason: guardrail.reason,
+          },
+        });
+
+        await logTelemetryEvent({
+          eventType: "payment.guardrail_blocked",
+          category: "payment",
+          status: "blocked",
+          targetPubkey: hexRecipient,
+          amountSats,
+          metadata: { rail: "nutzap", reason: guardrail.reason },
+          error: guardrail.reason,
+        });
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  status: "blocked_by_guardrails",
+                  reason: guardrail.reason,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      }
+
       // Case A: A pre-funded Cashu token was provided -> Execute NutZap immediately
       if (cashuToken && cashuToken.trim()) {
         const parsedToken = parseCashuToken(cashuToken.trim());
@@ -264,15 +328,44 @@ mcpServer.tool(
           mintUrl: cleanMint,
         });
 
-        // Record zap in local database
+        // Record spending in guardrails tracker and audit telemetry
         await Promise.allSettled([
+          recordAgentSpending({
+            amountSats,
+            rail: "cashu",
+            recipientPubkey: hexRecipient,
+            eventId: zapResult.id,
+            memo: comment,
+          }),
+          logAgentEvent({
+            type: "payment",
+            data: {
+              amountSats,
+              rail: "nutzap",
+              recipient: hexRecipient,
+              mint: cleanMint,
+              eventId: zapResult.id,
+              status: "settled",
+            },
+          }),
           accumulateZapTotals({
             pubkey: hexRecipient,
             addTotalSats: amountSats,
             addValidSats: amountSats,
           }),
           recordZapEdge("mcp_agent_sender", hexRecipient, amountSats),
+          logTelemetryEvent({
+            eventType: "payment.nutzap.settled",
+            category: "payment",
+            status: "success",
+            targetPubkey: hexRecipient,
+            amountSats,
+            metadata: { eventId: zapResult.id, mintUrl: cleanMint },
+          }),
         ]);
+
+        const current24h = await getRolling24hSpend();
+        const policy = getSpendingPolicy();
 
         const responseData = {
           success: true,
@@ -282,6 +375,9 @@ mcpServer.tool(
           amountSats,
           recipient: hexRecipient,
           changeToken: zapResult.changeToken,
+          guardrail: {
+            remainingDailySats: Math.max(0, policy.dailyLimitSats - current24h),
+          },
           message: `Successfully delivered ${amountSats.toLocaleString()} Sats NutZap to ${hexRecipient}!`,
         };
 
@@ -423,6 +519,54 @@ const nwcToolHandler = async ({ invoice, nwcUri, timeoutMs, amountMsat }: {
   amountMsat?: number;
 }) => {
   try {
+    const amountSats =
+      amountMsat && amountMsat > 0
+        ? Math.round(amountMsat / 1000)
+        : decodeBolt11AmountSats(invoice) || 1;
+
+    // Guardrails Check: Enforce daily allowance and per-transaction limits for NWC
+    const guardrail = await assertSpendingAllowed({
+      amountSats,
+      rail: "nwc",
+    });
+
+    if (!guardrail.allowed) {
+      await logAgentEvent({
+        type: "radar_block",
+        data: {
+          amountSats,
+          rail: "nwc",
+          invoice,
+          reason: guardrail.reason,
+        },
+      });
+
+      await logTelemetryEvent({
+        eventType: "payment.guardrail_blocked",
+        category: "payment",
+        status: "blocked",
+        amountSats,
+        metadata: { rail: "nwc", reason: guardrail.reason },
+        error: guardrail.reason,
+      });
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                status: "blocked_by_guardrails",
+                reason: guardrail.reason,
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    }
+
     const result = await payWithNWC({
       invoice,
       nwcUri,
@@ -431,6 +575,38 @@ const nwcToolHandler = async ({ invoice, nwcUri, timeoutMs, amountMsat }: {
     });
 
     if (result.status === "success") {
+      // Record spending and log telemetry
+      await Promise.allSettled([
+        recordAgentSpending({
+          amountSats,
+          rail: "lightning_nwc",
+          eventId: result.responseEventId,
+          memo: `Lightning NWC Payment (Preimage: ${result.preimage?.slice(0, 10)}...)`,
+        }),
+        logAgentEvent({
+          type: "payment",
+          data: {
+            amountSats,
+            rail: "nwc",
+            invoice,
+            preimage: result.preimage,
+            feesPaidSats: result.fees_paid,
+            responseEventId: result.responseEventId,
+            status: "settled",
+          },
+        }),
+        logTelemetryEvent({
+          eventType: "payment.nwc.settled",
+          category: "payment",
+          status: "success",
+          amountSats,
+          metadata: { preimage: result.preimage, feesPaid: result.fees_paid },
+        }),
+      ]);
+
+      const current24h = await getRolling24hSpend();
+      const policy = getSpendingPolicy();
+
       return {
         content: [
           {
@@ -442,6 +618,9 @@ const nwcToolHandler = async ({ invoice, nwcUri, timeoutMs, amountMsat }: {
                 preimage: result.preimage,
                 feesPaidSats: result.fees_paid,
                 responseEventId: result.responseEventId,
+                guardrail: {
+                  remainingDailySats: Math.max(0, policy.dailyLimitSats - current24h),
+                },
                 message: `Lightning payment settled successfully via NWC! Preimage: ${result.preimage}`,
               },
               null,
@@ -451,6 +630,15 @@ const nwcToolHandler = async ({ invoice, nwcUri, timeoutMs, amountMsat }: {
         ],
       };
     }
+
+    await logTelemetryEvent({
+      eventType: "payment.nwc.failed",
+      category: "payment",
+      status: "failed",
+      amountSats,
+      error: result.error,
+      metadata: { errorCode: result.errorCode },
+    });
 
     return {
       content: [
@@ -543,6 +731,13 @@ mcpServer.tool(
       await initDatabase();
       const audit = await auditCashuMint(mintUrl, forceRefresh ?? false);
 
+      await logTelemetryEvent({
+        eventType: "mint.audited",
+        category: "mint",
+        status: audit.isOnline ? "success" : "failed",
+        metadata: { mintUrl, trustScore: audit.trustScore, riskLevel: audit.riskLevel },
+      });
+
       return {
         content: [
           {
@@ -599,6 +794,14 @@ mcpServer.tool(
         minTrustScore: minTrustScore ?? 45,
       });
 
+      await logTelemetryEvent({
+        eventType: "mint.routed",
+        category: "mint",
+        status: routing.meshHealthy ? "success" : "failed",
+        amountSats,
+        metadata: { selectedMint: routing.selectedMint?.mintUrl },
+      });
+
       return {
         content: [
           {
@@ -613,6 +816,156 @@ mcpServer.tool(
           {
             type: "text" as const,
             text: `Error routing Cashu Mint: ${err?.message || String(err)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+// =============================================================================
+// Tool 7: get_agent_identity (Zero-Config Identity Bootstrapping)
+// =============================================================================
+mcpServer.tool(
+  "get_agent_identity",
+  "Retrieve active autonomous AI agent cryptographic public identity (pubkey, npub, identity source, and ephemeral status).",
+  {},
+  async () => {
+    try {
+      const identity = getOrInitAgentIdentity();
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                pubkey: identity.pubkey,
+                npub: identity.npub,
+                source: identity.source,
+                isEphemeral: identity.isEphemeral,
+                createdAt: identity.createdAt,
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    } catch (err: any) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error resolving agent identity: ${err?.message || String(err)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+// =============================================================================
+// Tool 8: get_spending_guardrails (Agent Budget & Limits Inspector)
+// =============================================================================
+mcpServer.tool(
+  "get_spending_guardrails",
+  "Query current AI agent spending guardrails, daily budget, 24-hour satoshis spent, remaining allowance, and per-transaction limits.",
+  {},
+  async () => {
+    try {
+      await initDatabase();
+      const summary = await getSpendingSummary();
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(summary, null, 2),
+          },
+        ],
+      };
+    } catch (err: any) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error inspecting spending guardrails: ${err?.message || String(err)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+// =============================================================================
+// Tool 9: get_agent_telemetry (Developer Observability & Audit Trail)
+// =============================================================================
+mcpServer.tool(
+  "get_agent_telemetry",
+  "Inspect autonomous agent spending metrics, rolling 24h budget allowance, blocked Sybil threats, and recent telemetry events.",
+  {
+    timeframeHours: z
+      .number()
+      .int()
+      .min(1)
+      .max(720)
+      .optional()
+      .describe("Rolling window in hours to inspect (default: 24)"),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .optional()
+      .describe("Maximum number of telemetry events to retrieve (default: 20)"),
+  },
+  async ({ timeframeHours, limit }) => {
+    try {
+      await initDatabase();
+      const hours = timeframeHours ?? 24;
+      const policy = getSpendingPolicy();
+      const spentTodaySats = await getRolling24hSpend();
+      const remainingSats = Math.max(0, policy.dailyLimitSats - spentTodaySats);
+
+      const summary = await getAgentTelemetrySummary(hours);
+      const overview = await getTelemetryOverview();
+      const events = await queryTelemetryEvents({ limit: limit ?? 20 });
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                dailyLimitSats: policy.dailyLimitSats,
+                spentTodaySats,
+                remainingSats,
+                totalSpentSats: summary.totalSpentSats,
+                txCount: summary.txCount,
+                blockedSybilAttacks: summary.blockedSybilAttacks,
+                recentEvents: summary.recentEvents.slice(0, limit ?? 20),
+                events,
+                overview: {
+                  totalVolumeSats: overview.totalVolumeSats,
+                  totalEvents: overview.totalEvents,
+                  successRatePercent: overview.successRatePercent,
+                  byCategory: overview.byCategory,
+                },
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    } catch (err: any) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error retrieving agent telemetry: ${err?.message || String(err)}`,
           },
         ],
         isError: true,
