@@ -13,6 +13,10 @@
 [![Cashu Protocol](https://img.shields.io/badge/Cashu-NUT--06_Mint_Radar-00D084?style=for-the-badge)](https://cashu.space)
 [![Next.js 16](https://img.shields.io/badge/Next.js_16-App_Router-000000?style=for-the-badge&logo=next.js)](https://nextjs.org/)
 
+<p align="center">
+  <img src="assets/Demo.gif" alt="NostrPulse Autonomous Agent Mesh Showcase" width="100%" />
+</p>
+
 <br />
 
 <p align="center">
