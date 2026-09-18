@@ -59,6 +59,85 @@ try {
   } catch {}
 }
 
+export type McpProfile = "minimal" | "radar" | "payment" | "full";
+
+export const VALID_PROFILES: readonly McpProfile[] = [
+  "minimal",
+  "radar",
+  "payment",
+  "full",
+] as const;
+
+export const PROFILE_TOOLS: Record<McpProfile, string[]> = {
+  minimal: [
+    "check_trust_score",
+    "pay_cashu_nutzap",
+    "get_spending_guardrails",
+  ],
+  radar: [
+    "check_trust_score",
+    "audit_cashu_mint",
+  ],
+  payment: [
+    "pay_cashu_nutzap",
+    "pay_lightning_nwc",
+    "get_spending_guardrails",
+  ],
+  full: [
+    "check_trust_score",
+    "pay_cashu_nutzap",
+    "request_nip90_job",
+    "pay_lightning_nwc",
+    "pay_with_nwc",
+    "audit_cashu_mint",
+    "route_cashu_mint",
+    "get_agent_identity",
+    "get_spending_guardrails",
+    "get_agent_telemetry",
+  ],
+};
+
+export function resolveActiveProfile(): McpProfile {
+  // Read from npm exec env config if passed via npm
+  if (process.env.npm_config_profile) {
+    const val = process.env.npm_config_profile.trim().toLowerCase();
+    if (VALID_PROFILES.includes(val as McpProfile)) {
+      return val as McpProfile;
+    }
+  }
+
+  // Read CLI flags: --profile=<name> or --profile <name>
+  for (let i = 0; i < process.argv.length; i++) {
+    const arg = process.argv[i];
+    if (arg.startsWith("--profile=")) {
+      const val = arg.split("=")[1]?.trim().toLowerCase();
+      if (VALID_PROFILES.includes(val as McpProfile)) {
+        return val as McpProfile;
+      }
+    } else if (arg === "--profile" && i + 1 < process.argv.length) {
+      const val = process.argv[i + 1]?.trim().toLowerCase();
+      if (VALID_PROFILES.includes(val as McpProfile)) {
+        return val as McpProfile;
+      }
+    }
+  }
+
+  // Read environment variable: NOSTRPULSE_PROFILE
+  const envProfile = process.env.NOSTRPULSE_PROFILE?.trim().toLowerCase();
+  if (envProfile && VALID_PROFILES.includes(envProfile as McpProfile)) {
+    return envProfile as McpProfile;
+  }
+
+  return "full";
+}
+
+export const activeProfile = resolveActiveProfile();
+export const allowedTools = new Set(PROFILE_TOOLS[activeProfile]);
+
+export function isToolAllowed(name: string): boolean {
+  return allowedTools.has(name);
+}
+
 /**
  * Initialize the NostrPulse MCP Server
  */
@@ -70,17 +149,18 @@ const mcpServer = new McpServer({
 // =============================================================================
 // Tool 1: check_trust_score
 // =============================================================================
-mcpServer.tool(
-  "check_trust_score",
-  "Calculate Nostr Web-of-Trust (WoT) distance, Economic Stake (Zap satoshis), and anti-Sybil Trust Score (0-100) for any Nostr identity.",
-  {
-    pubkey: z
-      .string()
-      .describe(
-        "Nostr public key in 64-char lowercase hex or bech32 npub format (e.g. 'npub1...', '3bf0c63fc...')"
-      ),
-  },
-  async ({ pubkey }) => {
+if (isToolAllowed("check_trust_score")) {
+  mcpServer.tool(
+    "check_trust_score",
+    "Verify anti-Sybil Trust Score (0-100) and Web-of-Trust distance for a Nostr pubkey.",
+    {
+      pubkey: z
+        .string()
+        .describe(
+          "Target Nostr public key in 64-char hex or npub format"
+        ),
+    },
+    async ({ pubkey }) => {
     try {
       await initDatabase();
       const hex = normalizePubkey(pubkey);
@@ -190,38 +270,40 @@ mcpServer.tool(
     }
   }
 );
+}
 
 // =============================================================================
 // Tool 2: pay_cashu_nutzap
 // =============================================================================
-mcpServer.tool(
-  "pay_cashu_nutzap",
-  "Send a Cashu eCash NutZap (NIP-61 Kind 9321 via NIP-44 encryption) to a Nostr recipient pubkey using Cashu eCash tokens or request a mint invoice.",
-  {
-    recipient: z
-      .string()
-      .describe("Recipient Nostr public key (64-char hex or bech32 npub)"),
-    amountSats: z
-      .number()
-      .int()
-      .min(1)
-      .describe("Amount in satoshis to pay"),
-    cashuToken: z
-      .string()
-      .optional()
-      .describe(
-        "Optional Cashu eCash token string (cashuA... or cashuB...). If omitted, generates a Lightning invoice to mint proofs"
-      ),
-    mintUrl: z
-      .string()
-      .optional()
-      .describe("Target Cashu Mint URL (default: https://testnut.cashu.space)"),
-    comment: z
-      .string()
-      .optional()
-      .describe("Optional payment message or memo to include in the NutZap"),
-  },
-  async ({ recipient, amountSats, cashuToken, mintUrl, comment }) => {
+if (isToolAllowed("pay_cashu_nutzap")) {
+  mcpServer.tool(
+    "pay_cashu_nutzap",
+    "Send an eCash NutZap payment (NIP-61) to a Nostr recipient under guardrail limits.",
+    {
+      recipient: z
+        .string()
+        .describe("Recipient Nostr public key (64-char hex or bech32 npub)"),
+      amountSats: z
+        .number()
+        .int()
+        .min(1)
+        .describe("Amount in satoshis to pay"),
+      cashuToken: z
+        .string()
+        .nullish()
+        .describe(
+          "Optional Cashu eCash token string; if omitted, generates a mint quote invoice"
+        ),
+      mintUrl: z
+        .string()
+        .nullish()
+        .describe("Optional target Cashu mint URL"),
+      comment: z
+        .string()
+        .nullish()
+        .describe("Optional payment message memo"),
+    },
+    async ({ recipient, amountSats, cashuToken, mintUrl, comment }) => {
     try {
       await initDatabase();
       const hexRecipient = normalizePubkey(recipient);
@@ -335,7 +417,7 @@ mcpServer.tool(
             rail: "cashu",
             recipientPubkey: hexRecipient,
             eventId: zapResult.id,
-            memo: comment,
+            memo: comment || undefined,
           }),
           logAgentEvent({
             type: "payment",
@@ -426,88 +508,91 @@ mcpServer.tool(
     }
   }
 );
+}
 
 // =============================================================================
 // Tool 3: request_nip90_job
 // =============================================================================
-mcpServer.tool(
-  "request_nip90_job",
-  "Dispatch a distributed NIP-90 Data Vending Machine (DVM) job request (Kind 5000/5300) across Nostr relays for analytics/reputation computation, with automatic fallback to local database.",
-  {
-    prompt: z
-      .string()
-      .describe("Target Nostr public key (hex or npub) or computation input query"),
-    category: z
-      .string()
-      .optional()
-      .describe(
-        "Task category: 'zap-analytics', 'reputation', or 'trust-score' (default: 'trust-score')"
-      ),
-    timeframe: z
-      .string()
-      .optional()
-      .describe("Historical timeframe: 'all-time', '1y', or '30d' (default: 'all-time')"),
-    bidSats: z
-      .number()
-      .int()
-      .min(0)
-      .optional()
-      .describe("Bid fee offered to DVM worker in satoshis (default: 5)"),
-    timeoutMs: z
-      .number()
-      .int()
-      .min(500)
-      .max(10000)
-      .optional()
-      .describe("Timeout in milliseconds before falling back to local database (default: 3500)"),
-  },
-  async ({ prompt, category, timeframe, bidSats, timeoutMs }) => {
-    try {
-      const hex = normalizePubkey(prompt) || prompt;
+if (isToolAllowed("request_nip90_job")) {
+  mcpServer.tool(
+    "request_nip90_job",
+    "Dispatch a NIP-90 DVM analytics computation task across Nostr relays with local fallback.",
+    {
+      prompt: z
+        .string()
+        .describe("Target Nostr public key or computation query"),
+      category: z
+        .enum(["zap-analytics", "reputation", "trust-score"])
+        .optional()
+        .describe(
+          "Task category: 'zap-analytics', 'reputation', or 'trust-score' (default: 'trust-score')"
+        ),
+      timeframe: z
+        .enum(["all-time", "1y", "30d"])
+        .optional()
+        .describe("Historical timeframe: 'all-time', '1y', or '30d' (default: 'all-time')"),
+      bidSats: z
+        .number()
+        .int()
+        .min(0)
+        .optional()
+        .describe("Bid fee in satoshis (default: 5)"),
+      timeoutMs: z
+        .number()
+        .int()
+        .min(500)
+        .max(10000)
+        .optional()
+        .describe("Timeout in milliseconds (default: 3500)"),
+    },
+    async ({ prompt, category, timeframe, bidSats, timeoutMs }) => {
+      try {
+        const hex = normalizePubkey(prompt) || prompt;
 
-      const result = await requestDvmAnalyticsWithFallback({
-        targetPubkey: hex,
-        category: (category as any) || "trust-score",
-        timeframe: (timeframe as any) || "all-time",
-        bidSats: bidSats ?? 5,
-        timeoutMs: timeoutMs ?? 3500,
-      });
+        const result = await requestDvmAnalyticsWithFallback({
+          targetPubkey: hex,
+          category: (category as any) || "trust-score",
+          timeframe: (timeframe as any) || "all-time",
+          bidSats: bidSats ?? 5,
+          timeoutMs: timeoutMs ?? 3500,
+        });
 
-      const responsePayload = {
-        pubkey: result.pubkey,
-        totalSats: result.totalSats,
-        validSenderSats: result.validSenderSats,
-        zapCount: result.zapCount,
-        trustScore: result.trustScore,
-        reputationTier: result.reputationTier,
-        source: result.source,
-        dvmFallback: result.dvmFallback,
-        dvmPubkey: result.dvmPubkey || undefined,
-        jobId: result.jobId || undefined,
-        latencyMs: result.latencyMs,
-      };
+        const responsePayload = {
+          pubkey: result.pubkey,
+          totalSats: result.totalSats,
+          validSenderSats: result.validSenderSats,
+          zapCount: result.zapCount,
+          trustScore: result.trustScore,
+          reputationTier: result.reputationTier,
+          source: result.source,
+          dvmFallback: result.dvmFallback,
+          dvmPubkey: result.dvmPubkey || undefined,
+          jobId: result.jobId || undefined,
+          latencyMs: result.latencyMs,
+        };
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(responsePayload, null, 2),
-          },
-        ],
-      };
-    } catch (err: any) {
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: `Error processing NIP-90 DVM request: ${err?.message || String(err)}`,
-          },
-        ],
-        isError: true,
-      };
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(responsePayload, null, 2),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error processing NIP-90 DVM request: ${err?.message || String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
     }
-  }
-);
+  );
+}
 
 // =============================================================================
 // Tool 4: pay_lightning_nwc (NIP-47 Direct Lightning Rail)
@@ -675,12 +760,12 @@ const nwcToolHandler = async ({ invoice, nwcUri, timeoutMs, amountMsat }: {
 const nwcToolSchema = {
   invoice: z
     .string()
-    .describe("BOLT-11 Lightning invoice."),
+    .describe("BOLT-11 Lightning invoice"),
   nwcUri: z
     .string()
     .optional()
     .describe(
-      "Explicit NWC connection URI (falls back to env NWC_CONNECTION_URI)."
+      "Optional NWC connection URI (falls back to env NWC_CONNECTION_URI)"
     ),
   timeoutMs: z
     .number()
@@ -697,286 +782,300 @@ const nwcToolSchema = {
     .describe("Optional amount in millisatoshis for amountless invoices"),
 };
 
-mcpServer.tool(
-  "pay_lightning_nwc",
-  "Settle BOLT-11 Lightning invoices directly through an autonomous node via NIP-47 Nostr Wallet Connect (Alby Hub, Phoenixd, Umbrel).",
-  nwcToolSchema,
-  nwcToolHandler
-);
+if (isToolAllowed("pay_lightning_nwc")) {
+  mcpServer.tool(
+    "pay_lightning_nwc",
+    "Pay a BOLT-11 Lightning invoice via NIP-47 Nostr Wallet Connect.",
+    nwcToolSchema,
+    nwcToolHandler
+  );
+}
 
-mcpServer.tool(
-  "pay_with_nwc",
-  "Alias for pay_lightning_nwc: settle BOLT-11 Lightning invoices via NIP-47 NWC.",
-  nwcToolSchema,
-  nwcToolHandler
-);
+// pay_with_nwc alias: strictly exposed only when running full profile
+if (activeProfile === "full" && isToolAllowed("pay_with_nwc")) {
+  mcpServer.tool(
+    "pay_with_nwc",
+    "Pay a BOLT-11 Lightning invoice via NIP-47 Nostr Wallet Connect (alias).",
+    nwcToolSchema,
+    nwcToolHandler
+  );
+}
 
 // =============================================================================
 // Tool 5: audit_cashu_mint
 // =============================================================================
-mcpServer.tool(
-  "audit_cashu_mint",
-  "Audit and evaluate counterparty risk of a Cashu eCash Mint using Web-of-Trust graph distance, NIP-05 sovereign domain validation, and admin reputation.",
-  {
-    mintUrl: z
-      .string()
-      .describe("Target Cashu mint URL (e.g., https://mint.minibits.cash/Bitcoin)."),
-    forceRefresh: z
-      .boolean()
-      .optional()
-      .describe("Bypass in-memory audit cache and perform fresh live probe (default: false)"),
-  },
-  async ({ mintUrl, forceRefresh }) => {
-    try {
-      await initDatabase();
-      const audit = await auditCashuMint(mintUrl, forceRefresh ?? false);
+if (isToolAllowed("audit_cashu_mint")) {
+  mcpServer.tool(
+    "audit_cashu_mint",
+    "Audit Cashu mint health, NUT-06 status, and counterparty risk score.",
+    {
+      mintUrl: z
+        .string()
+        .describe("Target Cashu mint URL to audit"),
+      forceRefresh: z
+        .boolean()
+        .optional()
+        .describe("Bypass in-memory audit cache and perform fresh live probe (default: false)"),
+    },
+    async ({ mintUrl, forceRefresh }) => {
+      try {
+        await initDatabase();
+        const audit = await auditCashuMint(mintUrl, forceRefresh ?? false);
 
-      await logTelemetryEvent({
-        eventType: "mint.audited",
-        category: "mint",
-        status: audit.isOnline ? "success" : "failed",
-        metadata: { mintUrl, trustScore: audit.trustScore, riskLevel: audit.riskLevel },
-      });
+        await logTelemetryEvent({
+          eventType: "mint.audited",
+          category: "mint",
+          status: audit.isOnline ? "success" : "failed",
+          metadata: { mintUrl, trustScore: audit.trustScore, riskLevel: audit.riskLevel },
+        });
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(audit, null, 2),
-          },
-        ],
-      };
-    } catch (err: any) {
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: `Error auditing Cashu Mint: ${err?.message || String(err)}`,
-          },
-        ],
-        isError: true,
-      };
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(audit, null, 2),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error auditing Cashu Mint: ${err?.message || String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
     }
-  }
-);
+  );
+}
 
 // =============================================================================
 // Tool 6: route_cashu_mint
 // =============================================================================
-mcpServer.tool(
-  "route_cashu_mint",
-  "Dynamically discover and route to the highest-trust, lowest-latency Cashu Mint from the WoT-Gated Dynamic Mint Mesh.",
-  {
-    amountSats: z
-      .number()
-      .int()
-      .min(1)
-      .optional()
-      .describe("Intended payment or minting amount in Satoshis"),
-    preferredMint: z
-      .string()
-      .optional()
-      .describe("Optional preferred mint URL to prioritize if verified and healthy"),
-    minTrustScore: z
-      .number()
-      .int()
-      .min(0)
-      .max(100)
-      .optional()
-      .describe("Minimum WoT Trust Score required to pass the security gate (default: 45)"),
-  },
-  async ({ amountSats, preferredMint, minTrustScore }) => {
-    try {
-      await initDatabase();
-      const routing = await routeCashuMint({
-        amountSats,
-        preferredMint,
-        minTrustScore: minTrustScore ?? 45,
-      });
+if (isToolAllowed("route_cashu_mint")) {
+  mcpServer.tool(
+    "route_cashu_mint",
+    "Route to the highest-trust, lowest-latency Cashu mint for a payment.",
+    {
+      amountSats: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe("Payment amount in satoshis"),
+      preferredMint: z
+        .string()
+        .optional()
+        .describe("Optional preferred mint URL to prioritize if verified and healthy"),
+      minTrustScore: z
+        .number()
+        .int()
+        .min(0)
+        .max(100)
+        .optional()
+        .describe("Minimum required trust score (default: 45)"),
+    },
+    async ({ amountSats, preferredMint, minTrustScore }) => {
+      try {
+        await initDatabase();
+        const routing = await routeCashuMint({
+          amountSats,
+          preferredMint,
+          minTrustScore: minTrustScore ?? 45,
+        });
 
-      await logTelemetryEvent({
-        eventType: "mint.routed",
-        category: "mint",
-        status: routing.meshHealthy ? "success" : "failed",
-        amountSats,
-        metadata: { selectedMint: routing.selectedMint?.mintUrl },
-      });
+        await logTelemetryEvent({
+          eventType: "mint.routed",
+          category: "mint",
+          status: routing.meshHealthy ? "success" : "failed",
+          amountSats,
+          metadata: { selectedMint: routing.selectedMint?.mintUrl },
+        });
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(routing, null, 2),
-          },
-        ],
-      };
-    } catch (err: any) {
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: `Error routing Cashu Mint: ${err?.message || String(err)}`,
-          },
-        ],
-        isError: true,
-      };
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(routing, null, 2),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error routing Cashu Mint: ${err?.message || String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
     }
-  }
-);
+  );
+}
 
 // =============================================================================
 // Tool 7: get_agent_identity (Zero-Config Identity Bootstrapping)
 // =============================================================================
-mcpServer.tool(
-  "get_agent_identity",
-  "Retrieve active autonomous AI agent cryptographic public identity (pubkey, npub, identity source, and ephemeral status).",
-  {},
-  async () => {
-    try {
-      const identity = getOrInitAgentIdentity();
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              {
-                pubkey: identity.pubkey,
-                npub: identity.npub,
-                source: identity.source,
-                isEphemeral: identity.isEphemeral,
-                createdAt: identity.createdAt,
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
-    } catch (err: any) {
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: `Error resolving agent identity: ${err?.message || String(err)}`,
-          },
-        ],
-        isError: true,
-      };
+if (isToolAllowed("get_agent_identity")) {
+  mcpServer.tool(
+    "get_agent_identity",
+    "Get the autonomous agent's Nostr public identity and npub.",
+    {},
+    async () => {
+      try {
+        const identity = getOrInitAgentIdentity();
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  pubkey: identity.pubkey,
+                  npub: identity.npub,
+                  source: identity.source,
+                  isEphemeral: identity.isEphemeral,
+                  createdAt: identity.createdAt,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error resolving agent identity: ${err?.message || String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
     }
-  }
-);
+  );
+}
 
 // =============================================================================
 // Tool 8: get_spending_guardrails (Agent Budget & Limits Inspector)
 // =============================================================================
-mcpServer.tool(
-  "get_spending_guardrails",
-  "Query current AI agent spending guardrails, daily budget, 24-hour satoshis spent, remaining allowance, and per-transaction limits.",
-  {},
-  async () => {
-    try {
-      await initDatabase();
-      const summary = await getSpendingSummary();
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(summary, null, 2),
-          },
-        ],
-      };
-    } catch (err: any) {
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: `Error inspecting spending guardrails: ${err?.message || String(err)}`,
-          },
-        ],
-        isError: true,
-      };
+if (isToolAllowed("get_spending_guardrails")) {
+  mcpServer.tool(
+    "get_spending_guardrails",
+    "Check current AI agent spending budget, daily limits, and remaining satoshis.",
+    {},
+    async () => {
+      try {
+        await initDatabase();
+        const summary = await getSpendingSummary();
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(summary, null, 2),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error inspecting spending guardrails: ${err?.message || String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
     }
-  }
-);
+  );
+}
 
 // =============================================================================
 // Tool 9: get_agent_telemetry (Developer Observability & Audit Trail)
 // =============================================================================
-mcpServer.tool(
-  "get_agent_telemetry",
-  "Inspect autonomous agent spending metrics, rolling 24h budget allowance, blocked Sybil threats, and recent telemetry events.",
-  {
-    timeframeHours: z
-      .number()
-      .int()
-      .min(1)
-      .max(720)
-      .optional()
-      .describe("Rolling window in hours to inspect (default: 24)"),
-    limit: z
-      .number()
-      .int()
-      .min(1)
-      .max(100)
-      .optional()
-      .describe("Maximum number of telemetry events to retrieve (default: 20)"),
-  },
-  async ({ timeframeHours, limit }) => {
-    try {
-      await initDatabase();
-      const hours = timeframeHours ?? 24;
-      const policy = getSpendingPolicy();
-      const spentTodaySats = await getRolling24hSpend();
-      const remainingSats = Math.max(0, policy.dailyLimitSats - spentTodaySats);
+if (isToolAllowed("get_agent_telemetry")) {
+  mcpServer.tool(
+    "get_agent_telemetry",
+    "Retrieve agent telemetry metrics, rolling spend volume, and security events.",
+    {
+      timeframeHours: z
+        .number()
+        .int()
+        .min(1)
+        .max(720)
+        .optional()
+        .describe("Timeframe in hours (default: 24)"),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(100)
+        .optional()
+        .describe("Max events to return (default: 20)"),
+    },
+    async ({ timeframeHours, limit }) => {
+      try {
+        await initDatabase();
+        const hours = timeframeHours ?? 24;
+        const policy = getSpendingPolicy();
+        const spentTodaySats = await getRolling24hSpend();
+        const remainingSats = Math.max(0, policy.dailyLimitSats - spentTodaySats);
 
-      const summary = await getAgentTelemetrySummary(hours);
-      const overview = await getTelemetryOverview();
-      const events = await queryTelemetryEvents({ limit: limit ?? 20 });
+        const summary = await getAgentTelemetrySummary(hours);
+        const overview = await getTelemetryOverview();
+        const events = await queryTelemetryEvents({ limit: limit ?? 20 });
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              {
-                dailyLimitSats: policy.dailyLimitSats,
-                spentTodaySats,
-                remainingSats,
-                totalSpentSats: summary.totalSpentSats,
-                txCount: summary.txCount,
-                blockedSybilAttacks: summary.blockedSybilAttacks,
-                recentEvents: summary.recentEvents.slice(0, limit ?? 20),
-                events,
-                overview: {
-                  totalVolumeSats: overview.totalVolumeSats,
-                  totalEvents: overview.totalEvents,
-                  successRatePercent: overview.successRatePercent,
-                  byCategory: overview.byCategory,
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  dailyLimitSats: policy.dailyLimitSats,
+                  spentTodaySats,
+                  remainingSats,
+                  totalSpentSats: summary.totalSpentSats,
+                  txCount: summary.txCount,
+                  blockedSybilAttacks: summary.blockedSybilAttacks,
+                  recentEvents: summary.recentEvents.slice(0, limit ?? 20),
+                  events,
+                  overview: {
+                    totalVolumeSats: overview.totalVolumeSats,
+                    totalEvents: overview.totalEvents,
+                    successRatePercent: overview.successRatePercent,
+                    byCategory: overview.byCategory,
+                  },
                 },
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
-    } catch (err: any) {
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: `Error retrieving agent telemetry: ${err?.message || String(err)}`,
-          },
-        ],
-        isError: true,
-      };
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error retrieving agent telemetry: ${err?.message || String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
     }
-  }
-);
+  );
+}
 
 // Register tools into globalToolRegistry as well for interoperability
-globalToolRegistry.registerToMcpServer(mcpServer);
-
+globalToolRegistry.registerToMcpServer(mcpServer, Array.from(allowedTools));
 
 /**
  * Connect to standard stdio JSON-RPC transport
@@ -984,7 +1083,9 @@ globalToolRegistry.registerToMcpServer(mcpServer);
 async function main() {
   const transport = new StdioServerTransport();
   await mcpServer.connect(transport);
-  console.error("[NostrPulse MCP] StdioServerTransport connected. Server running on stdio JSON-RPC.");
+  console.error(
+    `[NostrPulse MCP] Active Profile: ${activeProfile} (${allowedTools.size} tools active). StdioServerTransport connected.`
+  );
 }
 
 main().catch((error) => {
