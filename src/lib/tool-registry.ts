@@ -190,9 +190,15 @@ export class ToolRegistry {
    * Uses mapJsonSchemaToZod to pass the required Zod raw shape for parameter validation.
    *
    * @param server - McpServer instance from @modelcontextprotocol/sdk
+   * @param allowedTools - Optional array of tool names to filter which tools get registered
    */
-  public registerToMcpServer(server: McpServer): void {
+  public registerToMcpServer(server: McpServer, allowedTools?: string[]): void {
+    const allowedSet = allowedTools ? new Set(allowedTools) : null;
     for (const tool of this.tools.values()) {
+      if (allowedSet && !allowedSet.has(tool.name)) {
+        continue;
+      }
+
       if ((server as any)._registeredTools?.[tool.name]) {
         continue;
       }
@@ -263,7 +269,7 @@ export const globalToolRegistry = new ToolRegistry();
 globalToolRegistry.registerTool({
   name: "pay_lightning_nwc",
   description:
-    "Settle BOLT-11 Lightning invoices directly through an autonomous node via NIP-47 Nostr Wallet Connect (Alby Hub, Phoenixd, Umbrel).",
+    "Pay a BOLT-11 Lightning invoice via NIP-47 Nostr Wallet Connect.",
   inputSchema: {
     type: "object",
     properties: {
@@ -349,7 +355,7 @@ globalToolRegistry.registerTool({
 globalToolRegistry.registerTool({
   name: "audit_cashu_mint",
   description:
-    "Audit and evaluate counterparty risk of a Cashu eCash Mint using Web-of-Trust graph distance, NIP-05 sovereign domain validation, and admin reputation.",
+    "Audit Cashu mint health, NUT-06 status, and counterparty risk score.",
   inputSchema: {
     type: "object",
     properties: {
@@ -373,7 +379,7 @@ globalToolRegistry.registerTool({
 globalToolRegistry.registerTool({
   name: "route_cashu_mint",
   description:
-    "Dynamically discover and route to the highest-trust, lowest-latency Cashu Mint from the WoT-Gated Dynamic Mint Mesh.",
+    "Route to the highest-trust, lowest-latency Cashu mint for a payment.",
   inputSchema: {
     type: "object",
     properties: {
@@ -404,7 +410,7 @@ globalToolRegistry.registerTool({
 globalToolRegistry.registerTool({
   name: "get_agent_identity",
   description:
-    "Retrieve active autonomous AI agent cryptographic public identity (pubkey, npub, identity source, and ephemeral status).",
+    "Get the autonomous agent's Nostr public identity and npub.",
   inputSchema: {
     type: "object",
     properties: {},
@@ -425,7 +431,7 @@ globalToolRegistry.registerTool({
 globalToolRegistry.registerTool({
   name: "get_spending_guardrails",
   description:
-    "Query current AI agent spending guardrails, daily budget, 24-hour satoshis spent, remaining allowance, and per-transaction limits.",
+    "Check current AI agent spending budget, daily limits, and remaining satoshis.",
   inputSchema: {
     type: "object",
     properties: {},
@@ -439,7 +445,7 @@ globalToolRegistry.registerTool({
 globalToolRegistry.registerTool({
   name: "get_agent_telemetry",
   description:
-    "Inspect autonomous agent spending metrics, rolling 24h budget allowance, blocked Sybil threats, and recent telemetry events.",
+    "Retrieve agent telemetry metrics, rolling spend volume, and security events.",
   inputSchema: {
     type: "object",
     properties: {
