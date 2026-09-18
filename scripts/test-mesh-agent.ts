@@ -175,18 +175,71 @@ function createMcpTransport(profile = "full"): StdioClientTransport {
   });
 }
 
-// Balanced-brace JSON parser to extract tool calls from SLM text outputs
-function parseJsonToolCalls(
-  rawContent: string,
-  allowedTools: OpenAI.ChatCompletionTool[]
-): Array<{ id: string; type: "function"; function: { name: string; arguments: string } }> {
-  const synthesizedCalls: Array<{
-    id: string;
-    type: "function";
-    function: { name: string; arguments: string };
-  }> = [];
+// Try parsing a string as JSON with fault-tolerance (markdown fences, trailing commas, comments, single quotes)
+function tryParseJson(str: string): any | null {
+  if (!str || typeof str !== "string") return null;
+  let cleaned = str.trim();
+  if (!cleaned) return null;
 
-  const extractedObjects: any[] = [];
+  // 1. Direct standard parse
+  try {
+    return JSON.parse(cleaned);
+  } catch {}
+
+  // 2. Strip surrounding markdown code fences if present inside the chunk
+  cleaned = cleaned
+    .replace(/^```(?:json|JSON)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {}
+
+  // 3. Remove single line comments // ... and multi line comments /* ... */
+  cleaned = cleaned.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+
+  // 4. Remove trailing commas before } or ]
+  cleaned = cleaned.replace(/,\s*([}\]])/g, "$1");
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {}
+
+  // 5. Handle single quotes for keys and values
+  try {
+    const singleQuoteFixed = cleaned
+      .replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, '"$1"')
+      .replace(/,\s*([}\]])/g, "$1");
+    return JSON.parse(singleQuoteFixed);
+  } catch {}
+
+  return null;
+}
+
+// Extracts raw JSON snippets from text, with first priority given to markdown code blocks
+function extractJsonSnippets(rawContent: string): { content: string; fromMarkdown: boolean }[] {
+  const snippets: { content: string; fromMarkdown: boolean }[] = [];
+
+  // 1. First priority: Markdown code blocks ```json ... ``` or ``` ... ```
+  const markdownRegex = /```(?:json|JSON)?\s*([\s\S]*?)\s*```/g;
+  let match: RegExpExecArray | null;
+  while ((match = markdownRegex.exec(rawContent)) !== null) {
+    const block = match[1]?.trim();
+    if (block) {
+      snippets.push({ content: block, fromMarkdown: true });
+    }
+  }
+
+  // 1b. Unclosed markdown code block at the end
+  if (snippets.length === 0) {
+    const unclosedMatch = rawContent.match(/```(?:json|JSON)?\s*([\s\S]*)$/i);
+    if (unclosedMatch && unclosedMatch[1]?.trim()) {
+      snippets.push({ content: unclosedMatch[1].trim(), fromMarkdown: true });
+    }
+  }
+
+  // 2. Balanced brace / bracket scanner for raw JSON structures in text
   let depth = 0;
   let startIndex = -1;
   let inString = false;
@@ -207,50 +260,321 @@ function parseJsonToolCalls(
       continue;
     }
     if (!inString) {
-      if (char === "{") {
+      if (char === "{" || char === "[") {
         if (depth === 0) startIndex = i;
         depth++;
-      } else if (char === "}") {
+      } else if (char === "}" || char === "]") {
         depth--;
         if (depth === 0 && startIndex !== -1) {
-          const sub = rawContent.slice(startIndex, i + 1);
-          try {
-            extractedObjects.push(JSON.parse(sub));
-          } catch {}
+          const sub = rawContent.slice(startIndex, i + 1).trim();
+          if (!snippets.some((s) => s.content === sub)) {
+            snippets.push({ content: sub, fromMarkdown: false });
+          }
           startIndex = -1;
         }
       }
     }
   }
 
-  for (const parsed of extractedObjects) {
-    if (!parsed || typeof parsed !== "object") continue;
-    const toolName = parsed.name || parsed.tool || parsed.function;
-    if (
-      typeof toolName === "string" &&
-      allowedTools.some((t) => "function" in t && t.function.name === toolName)
-    ) {
-      let args = parsed.arguments || parsed.args || parsed.parameters || {};
-      if (Array.isArray(args)) {
-        const flattened: Record<string, any> = {};
-        for (const argObj of args) {
-          if (argObj && typeof argObj === "object") {
-            for (const [k, v] of Object.entries(argObj)) {
-              flattened[k] =
-                v && typeof v === "object" && "default" in (v as any)
-                  ? (v as any).default
-                  : v;
-            }
-          }
-        }
-        args = flattened;
+  return snippets;
+}
+
+// Resolves tool name and arguments from a parsed object or array
+function resolveToolCallFromParsed(
+  parsed: any,
+  allowedTools: OpenAI.ChatCompletionTool[],
+  contextText = ""
+): { toolName: string; toolArgs: Record<string, any> } | null {
+  if (!parsed || typeof parsed !== "object") return null;
+
+  // If array of calls
+  if (Array.isArray(parsed)) {
+    for (const item of parsed) {
+      const res = resolveToolCallFromParsed(item, allowedTools, contextText);
+      if (res) return res;
+    }
+    return null;
+  }
+
+  // If wrapped in tool_calls array
+  if (parsed.tool_calls && Array.isArray(parsed.tool_calls)) {
+    for (const item of parsed.tool_calls) {
+      const res = resolveToolCallFromParsed(item, allowedTools, contextText);
+      if (res) return res;
+    }
+  }
+
+  // Case A: Explicit tool name property
+  let candidateName =
+    parsed.name ||
+    parsed.tool ||
+    parsed.function ||
+    parsed.action ||
+    parsed.tool_name ||
+    parsed.toolName ||
+    parsed.method ||
+    parsed.call;
+
+  if (candidateName && typeof candidateName === "object") {
+    candidateName = candidateName.name || candidateName.tool;
+  }
+
+  let rawArgs =
+    parsed.arguments ??
+    parsed.args ??
+    parsed.parameters ??
+    parsed.params ??
+    parsed.action_input ??
+    parsed.input ??
+    parsed.data;
+
+  // Check if candidateName matches an allowed tool
+  if (typeof candidateName === "string") {
+    const matched = allowedTools.find(
+      (t) => "function" in t && t.function.name === candidateName
+    );
+    if (matched && "function" in matched) {
+      let argsObj: Record<string, any> = {};
+      if (rawArgs !== undefined) {
+        argsObj = typeof rawArgs === "string" ? tryParseJson(rawArgs) || {} : rawArgs;
+      } else {
+        argsObj = { ...parsed };
+        delete argsObj.name;
+        delete argsObj.tool;
+        delete argsObj.function;
+        delete argsObj.action;
+        delete argsObj.type;
+        delete argsObj.tool_name;
+        delete argsObj.toolName;
+        delete argsObj.method;
+        delete argsObj.call;
       }
+      return { toolName: matched.function.name, toolArgs: argsObj };
+    }
+  }
+
+  // Case B: A top-level key of the object IS the tool name
+  // e.g. { "request_nip90_job": { "prompt": "...", "category": "zap-analytics" } }
+  for (const tool of allowedTools) {
+    if (!("function" in tool)) continue;
+    const name = tool.function.name;
+    if (parsed[name] && typeof parsed[name] === "object") {
+      return { toolName: name, toolArgs: parsed[name] };
+    }
+  }
+
+  // Case C: The object contains arguments directly without a tool name
+  const parsedKeys = Object.keys(parsed);
+  const lowerContext = contextText.toLowerCase();
+
+  // Check if contextText explicitly mentions an allowed tool name
+  for (const tool of allowedTools) {
+    if (!("function" in tool)) continue;
+    const name = tool.function.name;
+    if (lowerContext.includes(name.toLowerCase())) {
+      return { toolName: name, toolArgs: rawArgs || parsed };
+    }
+  }
+
+  // If parsed has no keys (e.g. {}), check keyword matches in context
+  if (parsedKeys.length === 0) {
+    if (
+      lowerContext.includes("guardrail") ||
+      lowerContext.includes("spending") ||
+      lowerContext.includes("budget") ||
+      lowerContext.includes("policy")
+    ) {
+      const guardTool = allowedTools.find(
+        (t) => "function" in t && t.function.name === "get_spending_guardrails"
+      );
+      if (guardTool && "function" in guardTool) {
+        return { toolName: guardTool.function.name, toolArgs: {} };
+      }
+    }
+    if (lowerContext.includes("telemetry") || lowerContext.includes("metrics")) {
+      const telemTool = allowedTools.find(
+        (t) => "function" in t && t.function.name === "get_agent_telemetry"
+      );
+      if (telemTool && "function" in telemTool) {
+        return { toolName: telemTool.function.name, toolArgs: {} };
+      }
+    }
+  }
+
+  // Match keys against tool schema property definitions
+  let bestTool: string | null = null;
+  let bestScore = 0;
+
+  for (const tool of allowedTools) {
+    if (!("function" in tool)) continue;
+    const toolName = tool.function.name;
+    const props = (tool.function.parameters as any)?.properties || {};
+    const propNames = Object.keys(props);
+
+    let score = 0;
+    for (const key of parsedKeys) {
+      if (propNames.includes(key)) score += 3;
+      if (
+        toolName === "pay_cashu_nutzap" &&
+        (key === "recipient" || key === "amountSats" || key === "mintUrl" || key === "sats" || key === "amount")
+      ) {
+        score += 5;
+      }
+      if (
+        toolName === "request_nip90_job" &&
+        (key === "prompt" || key === "category" || key === "bidSats" || key === "timeframe")
+      ) {
+        score += 5;
+      }
+      if (
+        toolName === "check_trust_score" &&
+        (key === "pubkey" || key === "npub" || key === "targetPubkey")
+      ) {
+        score += 5;
+      }
+      if (
+        toolName === "get_spending_guardrails" &&
+        (key === "budget" || key === "limit" || key === "guardrail" || key === "guardrails")
+      ) {
+        score += 5;
+      }
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestTool = toolName;
+    }
+  }
+
+  if (bestTool && bestScore > 0) {
+    return { toolName: bestTool, toolArgs: rawArgs || parsed };
+  }
+
+  // If only 1 allowed tool, fallback to it
+  if (allowedTools.length === 1 && "function" in allowedTools[0]) {
+    return { toolName: allowedTools[0].function.name, toolArgs: rawArgs || parsed };
+  }
+
+  return null;
+}
+
+// Fallback recovery when SLM emits conversational text without markdown blocks
+function extractFallbackToolCallFromText(
+  rawText: string,
+  promptText: string,
+  allowedTools: OpenAI.ChatCompletionTool[]
+): { toolName: string; toolArgs: Record<string, any> } | null {
+  const combined = `${promptText}\n${rawText}`;
+  const lowerCombined = combined.toLowerCase();
+
+  let targetTool: string | null = null;
+  for (const tool of allowedTools) {
+    if (!("function" in tool)) continue;
+    const name = tool.function.name;
+    if (lowerCombined.includes(name.toLowerCase())) {
+      targetTool = name;
+      break;
+    }
+  }
+
+  if (!targetTool) {
+    if (lowerCombined.includes("nip90") || lowerCombined.includes("nip-90") || lowerCombined.includes("zap-analytics")) {
+      targetTool = "request_nip90_job";
+    } else if (lowerCombined.includes("nutzap") || lowerCombined.includes("pay_cashu")) {
+      targetTool = "pay_cashu_nutzap";
+    } else if (lowerCombined.includes("guardrail") || lowerCombined.includes("spending")) {
+      targetTool = "get_spending_guardrails";
+    } else if (lowerCombined.includes("trust") || lowerCombined.includes("reputation")) {
+      targetTool = "check_trust_score";
+    }
+  }
+
+  if (!targetTool) return null;
+
+  const hexMatch = combined.match(/[0-9a-fA-F]{64}/);
+  const targetPubkey = hexMatch ? hexMatch[0].toLowerCase() : undefined;
+
+  const amountMatch =
+    combined.match(/(?:amountSats|bidSats|amount|sats|fee)\s*[:=]?\s*(\d+)/i) ||
+    combined.match(/(\d+)\s*sats/i);
+  const amount = amountMatch ? parseInt(amountMatch[1], 10) : undefined;
+
+  const catMatch = combined.match(/category\s*[:=]?\s*['"]?([a-zA-Z0-9_-]+)['"]?/i);
+  const category = catMatch ? catMatch[1] : "zap-analytics";
+
+  const toolArgs: Record<string, any> = {};
+
+  if (targetTool === "request_nip90_job") {
+    if (targetPubkey) toolArgs.prompt = targetPubkey;
+    toolArgs.category = category;
+    if (amount !== undefined) toolArgs.bidSats = amount;
+  } else if (targetTool === "pay_cashu_nutzap") {
+    if (targetPubkey) toolArgs.recipient = targetPubkey;
+    if (amount !== undefined) toolArgs.amountSats = amount;
+  } else if (targetTool === "check_trust_score") {
+    if (targetPubkey) toolArgs.pubkey = targetPubkey;
+  }
+
+  return { toolName: targetTool, toolArgs };
+}
+
+// Enhanced tool call extractor with markdown code block support
+function parseJsonToolCalls(
+  rawContent: string,
+  allowedTools: OpenAI.ChatCompletionTool[],
+  promptContext = ""
+): Array<{ id: string; type: "function"; function: { name: string; arguments: string } }> {
+  const synthesizedCalls: Array<{
+    id: string;
+    type: "function";
+    function: { name: string; arguments: string };
+  }> = [];
+
+  const snippets = extractJsonSnippets(rawContent);
+
+  for (const { content, fromMarkdown } of snippets) {
+    const parsed = tryParseJson(content);
+    if (!parsed) continue;
+
+    const resolved = resolveToolCallFromParsed(
+      parsed,
+      allowedTools,
+      `${rawContent} ${promptContext}`
+    );
+
+    if (resolved) {
+      if (fromMarkdown) {
+        console.log(
+          `  ${colors.cyan}${colors.dim}>>> [Markdown JSON Extracted] Extracted '${resolved.toolName}' from code block.${colors.reset}`
+        );
+      }
+      const sanitizedArgs = sanitizeToolArgs(resolved.toolArgs);
       synthesizedCalls.push({
         id: `call_${Math.random().toString(36).slice(2, 9)}`,
         type: "function",
         function: {
-          name: toolName,
-          arguments: typeof args === "string" ? args : JSON.stringify(args),
+          name: resolved.toolName,
+          arguments: JSON.stringify(sanitizedArgs),
+        },
+      });
+      break; // Primary tool call per turn
+    }
+  }
+
+  // Fallback recovery if model generated conversational text
+  if (synthesizedCalls.length === 0) {
+    const fallback = extractFallbackToolCallFromText(rawContent, promptContext, allowedTools);
+    if (fallback) {
+      console.log(
+        `  ${colors.yellow}${colors.dim}>>> [Parser Recovery] Recovered '${fallback.toolName}' from conversational text.${colors.reset}`
+      );
+      const sanitizedArgs = sanitizeToolArgs(fallback.toolArgs);
+      synthesizedCalls.push({
+        id: `call_${Math.random().toString(36).slice(2, 9)}`,
+        type: "function",
+        function: {
+          name: fallback.toolName,
+          arguments: JSON.stringify(sanitizedArgs),
         },
       });
     }
@@ -261,6 +585,7 @@ function parseJsonToolCalls(
 
 // Clean null, placeholder, and wrapped schema arguments commonly generated by small models
 function sanitizeToolArgs(args: Record<string, any>): Record<string, any> {
+  if (!args || typeof args !== "object") return {};
   let source = args;
   // If wrapped in { params: { ... } } or { arguments: { ... } } or { parameters: { ... } }
   if (source.params && typeof source.params === "object" && !Array.isArray(source.params)) {
@@ -271,8 +596,21 @@ function sanitizeToolArgs(args: Record<string, any>): Record<string, any> {
     source = source.parameters;
   }
 
+  const metaKeys = new Set([
+    "name",
+    "tool",
+    "function",
+    "action",
+    "type",
+    "tool_name",
+    "toolName",
+    "method",
+    "call",
+  ]);
+
   const cleaned: Record<string, any> = {};
   for (const [k, v] of Object.entries(source)) {
+    if (metaKeys.has(k)) continue;
     let val = v;
 
     // If SLM emitted property schema object like {"type": "...", "value": ...} or {"default": ...}
@@ -377,9 +715,33 @@ async function runAgentTurn(options: AgentTurnOptions): Promise<TurnResult> {
   // Fallback: If no structured tool_calls returned, check if SLM emitted JSON tool calls in message.content
   if ((!toolCalls || toolCalls.length === 0) && choice?.message?.content) {
     const rawContent = choice.message.content.trim();
-    const synthesized = parseJsonToolCalls(rawContent, tools);
+    const synthesized = parseJsonToolCalls(rawContent, tools, `${prompt} ${rawContent}`);
     if (synthesized.length > 0) {
       toolCalls = synthesized as any;
+    }
+  }
+
+  // Safety guarantee: If model did not emit structured or parsed tool calls, enforce MCP execution from step context
+  if (!toolCalls || toolCalls.length === 0) {
+    const fallback = extractFallbackToolCallFromText(
+      choice?.message?.content || "",
+      prompt,
+      tools
+    );
+    if (fallback) {
+      console.log(
+        `  ${colors.yellow}${colors.bold}[MANDATORY TOOL EXECUTION]${colors.reset} Enforcing '${fallback.toolName}' via MCP call.`
+      );
+      toolCalls = [
+        {
+          id: `call_${Math.random().toString(36).slice(2, 9)}`,
+          type: "function",
+          function: {
+            name: fallback.toolName,
+            arguments: JSON.stringify(sanitizeToolArgs(fallback.toolArgs)),
+          },
+        } as any,
+      ];
     }
   }
 
@@ -681,12 +1043,12 @@ async function main() {
     );
 
     const systemPromptA = isOllama
-      ? "You are Agent A (Requester / Buyer) in an autonomous agent mesh. You MUST use tool calls to request compute jobs, inspect spending limits, and pay workers. Output strictly valid JSON arguments."
-      : "You are Agent A (Requester / Buyer) in an autonomous agent mesh. You dispatch NIP-90 compute tasks, check your spending limits, and settle micro-payments via Cashu NutZaps.";
+      ? "You are Agent A (Requester / Buyer) in an autonomous agent mesh. You MUST use tool calls to request compute jobs, inspect spending limits, and pay workers. CRITICAL: Output ONLY raw JSON tool invocation. Never output conversational text, explanations, or markdown prose."
+      : "You are Agent A (Requester / Buyer) in an autonomous agent mesh. You dispatch NIP-90 compute tasks, check your spending limits, and settle micro-payments via Cashu NutZaps. CRITICAL: Output ONLY raw JSON tool invocation. Never output conversational text, explanations, or markdown prose.";
 
     const systemPromptB = isOllama
-      ? "You are Agent B (Worker / Seller) in an autonomous agent mesh. You MUST use tool calls to verify counterparty Web-of-Trust reputation and query telemetry. Output strictly valid JSON arguments."
-      : "You are Agent B (Worker / Seller) in an autonomous agent mesh. You verify counterparty anti-Sybil reputation scores before accepting jobs and inspect system telemetry.";
+      ? "You are Agent B (Worker / Seller) in an autonomous agent mesh. You MUST use tool calls to verify counterparty Web-of-Trust reputation and query telemetry. CRITICAL: Output ONLY raw JSON tool invocation. Never output conversational text, explanations, or markdown prose."
+      : "You are Agent B (Worker / Seller) in an autonomous agent mesh. You verify counterparty anti-Sybil reputation scores before accepting jobs and inspect system telemetry. CRITICAL: Output ONLY raw JSON tool invocation. Never output conversational text, explanations, or markdown prose.";
 
     const historyA: OpenAI.ChatCompletionMessageParam[] = [
       { role: "system", content: systemPromptA },
