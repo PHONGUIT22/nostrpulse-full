@@ -79,6 +79,52 @@ npx @modelcontextprotocol/inspector npx -y nostrpulse-mcp
 | `get_spending_guardrails` | **Budget Gatekeeper** | Query current AI agent spending guardrails, daily budget (500 sats rolling), 24h satoshis spent, remaining allowance, and per-tx limits (50 sats). |
 | `get_agent_telemetry` | **Telemetry & Audit** | Inspect autonomous agent spending metrics, rolling 24h budget allowance, blocked Sybil threats, and Stripe Radar-grade recent telemetry events. |
 
+### 4. Profiles for Small Language Models (SLMs: 500M – 1.5B)
+
+For edge devices, local SLMs (e.g., Qwen 2.5 0.5B/1.5B via Ollama), or cost-sensitive agent loops, NostrPulse supports **context-optimized profiles** that reduce prompt overhead from **~2,200 tokens down to ~380 tokens**:
+
+```bash
+# Launch with minimal profile (3 core tools: check_trust_score, pay_cashu_nutzap, get_spending_guardrails)
+npx -y nostrpulse-mcp --profile=minimal
+
+# Or via environment variable
+NOSTRPULSE_PROFILE=minimal npx -y nostrpulse-mcp
+```
+
+| Profile | Active Tools | Token Footprint | Recommended Use Case |
+| :--- | :--- | :---: | :--- |
+| `minimal` | `check_trust_score`, `pay_cashu_nutzap`, `get_spending_guardrails` | **~380 tokens** | Local SLMs (0.5B – 1.5B), edge devices, low-cost loops |
+| `radar` | `check_trust_score`, `audit_cashu_mint` | **~240 tokens** | Read-only anti-Sybil screening & Mint risk verification |
+| `payment` | `pay_cashu_nutzap`, `pay_lightning_nwc`, `get_spending_guardrails` | **~420 tokens** | Payment-only execution daemons & bots |
+| `full` | All 10 NostrPulse MCP tools | **~2,200 tokens** | Flagship LLMs (Claude 3.7/Opus, GPT-4o, Gemini 2.5) |
+
+---
+
+### 5. Autonomous Agent-to-Agent (A2A) Collaborative Mesh
+
+NostrPulse includes a reference implementation for autonomous agent-to-agent decentralized negotiation and micro-commerce (`scripts/test-mesh-agent.ts`):
+
+```text
+[ Agent A: Requester / Buyer ]                   [ Agent B: Worker / Seller ]
+             │                                                │
+             ├──► 1. Dispatch NIP-90 Job ('zap-analytics') ──►│
+             │                                                │
+             │    2. Audit Requester WoT Anti-Sybil Score ◄───┤ (Requires Trust Score > 40)
+             │       (check_trust_score)                      │
+             │                                                │
+             │◄── 3. Acknowledge & Deliver Computation ───────┤
+             │                                                │
+             ├──► 4. Inspect Budget Guardrails (assert 24h)   │
+             │                                                │
+             ├──► 5. Settle Cashu NutZap (Adaptive Fallback) ─►│
+```
+
+* **Zero-Cloud Local Inference:** Run the showcase locally using Ollama (`qwen2.5-coder:1.5b`) without cloud API keys:
+  ```bash
+  npm exec tsx scripts/test-mesh-agent.ts --ollama
+  ```
+* **Adaptive Spending Fallback:** If a requested micro-payment exceeds the rolling 24-hour spending limit, the agent automatically adapts down to the remaining safe allowance to settle minimum fees without crashing or overspending.
+
 ---
 
 ## 🌐 The Problem & The Freedom Solution
@@ -443,8 +489,14 @@ npx tsx scripts/test-nwc-pay.ts
 # Test WoT-Gated Cashu Mint Mesh (Testnut & Minibits /v1/info audit & trust verification)
 npx tsx scripts/test-mint-mesh.ts
 
-# Test autonomous Mini-Agent calling NostrPulse MCP via Gemini / AI SDK
-npx tsx scripts/test-mini-agent.ts
+# Test autonomous Agent-to-Agent (A2A) Collaborative Mesh (Local SLM / Ollama)
+npm exec tsx scripts/test-mesh-agent.ts --ollama
+
+# Test A2A Mesh against the published npm package over Stdio JSON-RPC
+npm exec tsx scripts/test-mesh-agent.ts --ollama --npm
+
+# Test 5-Stage Autonomous Mini-Agent Showcase (Ollama Minimal Profile or Gemini)
+npm exec tsx scripts/test-mini-agent.ts --ollama --profile=minimal
 
 # Test self-contained NIP-59 Gift Wrap encryption & decryption
 npx tsx scripts/test-nip59-encryption.ts
@@ -467,7 +519,8 @@ npx tsc --noEmit
 - [x] **Phase 8:** NIP-47 Nostr Wallet Connect (NWC) direct Lightning rail for autonomous node settlement.
 - [x] **Phase 9:** WoT-Gated Dynamic Mint Mesh & NUT-06 5-Pillar Counterparty Risk Radar.
 - [x] **Phase 10:** Agent Spending Guardrails (single-tx cap & 24h limits), Zero-Config Identity Bootstrapping & Developer Telemetry Data Layer.
-- [ ] **Phase 11:** Standalone `@nostrpulse/sdk` for seamless integration into third-party Nostr clients.
+- [x] **Phase 11:** Autonomous Agent-to-Agent (A2A) Collaborative Mesh, SLM Profiles (`--profile=minimal`), and Adaptive Spending Fallback.
+- [ ] **Phase 12:** Standalone `@nostrpulse/sdk` for seamless integration into third-party Nostr clients.
 
 ---
 

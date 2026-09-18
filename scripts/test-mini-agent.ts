@@ -41,7 +41,7 @@ const colors = {
 
 // Detect inference provider: local Ollama vs Google AI Studio (Gemini)
 const isOllama =
-  process.argv.includes("--ollama") ||
+  process.argv.some((arg) => arg === "--ollama" || arg.startsWith("--ollama=")) ||
   process.env.USE_OLLAMA === "true" ||
   process.env.npm_config_ollama !== undefined;
 
@@ -410,6 +410,11 @@ async function runStage(
         });
       }
 
+      // Early break if all expected tools for this stage have been exercised
+      if (stage.expectedTools.every((tool) => exercisedTools.has(tool))) {
+        break;
+      }
+
       // Small delay between tool-calling loop turns
       await new Promise((r) => setTimeout(r, 1000));
     }
@@ -479,20 +484,35 @@ async function main() {
   }
 
   // 2. Establish connection to MCP Server via Stdio
-  console.log(`${colors.dim}>>> Connecting to NostrPulse MCP Server (${targetProfile} profile) over Stdio JSON-RPC...${colors.reset}`);
+  const isNpm =
+    process.argv.includes("--npm") ||
+    process.env.USE_NPM === "true" ||
+    process.env.npm_config_npm !== undefined;
+
+  console.log(
+    `${colors.dim}>>> Connecting to ${isNpm ? "published nostrpulse-mcp npm package" : "NostrPulse MCP Server"} (${targetProfile} profile) over Stdio JSON-RPC...${colors.reset}`
+  );
 
   const distEntryPath = path.resolve(process.cwd(), "dist/mcp-entry.js");
   const srcEntryPath = path.resolve(process.cwd(), "src/mcp-entry.ts");
   const hasDist = fs.existsSync(distEntryPath);
   const profileArg = `--profile=${targetProfile}`;
 
-  const transport = new StdioClientTransport({
-    command: "node",
-    args: hasDist
+  const transportCommand = isNpm
+    ? (process.platform === "win32" ? "npx.cmd" : "npx")
+    : "node";
+
+  const transportArgs = isNpm
+    ? ["-y", "nostrpulse-mcp", profileArg]
+    : hasDist
       ? [distEntryPath, profileArg]
       : (process.platform === "win32"
           ? ["/c", "npx.cmd", "tsx", srcEntryPath, profileArg]
-          : ["tsx", srcEntryPath, profileArg]),
+          : ["tsx", srcEntryPath, profileArg]);
+
+  const transport = new StdioClientTransport({
+    command: transportCommand,
+    args: transportArgs,
     env: {
       ...process.env,
       NOSTRPULSE_PROFILE: targetProfile,
