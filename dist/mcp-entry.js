@@ -176,9 +176,14 @@ var ToolRegistry = class {
    * Uses mapJsonSchemaToZod to pass the required Zod raw shape for parameter validation.
    *
    * @param server - McpServer instance from @modelcontextprotocol/sdk
+   * @param allowedTools - Optional array of tool names to filter which tools get registered
    */
-  registerToMcpServer(server) {
+  registerToMcpServer(server, allowedTools2) {
+    const allowedSet = allowedTools2 ? new Set(allowedTools2) : null;
     for (const tool of this.tools.values()) {
+      if (allowedSet && !allowedSet.has(tool.name)) {
+        continue;
+      }
       if (server._registeredTools?.[tool.name]) {
         continue;
       }
@@ -240,7 +245,7 @@ var ToolRegistry = class {
 var globalToolRegistry = new ToolRegistry();
 globalToolRegistry.registerTool({
   name: "pay_lightning_nwc",
-  description: "Settle BOLT-11 Lightning invoices directly through an autonomous node via NIP-47 Nostr Wallet Connect (Alby Hub, Phoenixd, Umbrel).",
+  description: "Pay a BOLT-11 Lightning invoice via NIP-47 Nostr Wallet Connect.",
   inputSchema: {
     type: "object",
     properties: {
@@ -313,7 +318,7 @@ globalToolRegistry.registerTool({
 });
 globalToolRegistry.registerTool({
   name: "audit_cashu_mint",
-  description: "Audit and evaluate counterparty risk of a Cashu eCash Mint using Web-of-Trust graph distance, NIP-05 sovereign domain validation, and admin reputation.",
+  description: "Audit Cashu mint health, NUT-06 status, and counterparty risk score.",
   inputSchema: {
     type: "object",
     properties: {
@@ -335,7 +340,7 @@ globalToolRegistry.registerTool({
 });
 globalToolRegistry.registerTool({
   name: "route_cashu_mint",
-  description: "Dynamically discover and route to the highest-trust, lowest-latency Cashu Mint from the WoT-Gated Dynamic Mint Mesh.",
+  description: "Route to the highest-trust, lowest-latency Cashu mint for a payment.",
   inputSchema: {
     type: "object",
     properties: {
@@ -364,7 +369,7 @@ globalToolRegistry.registerTool({
 });
 globalToolRegistry.registerTool({
   name: "get_agent_identity",
-  description: "Retrieve active autonomous AI agent cryptographic public identity (pubkey, npub, identity source, and ephemeral status).",
+  description: "Get the autonomous agent's Nostr public identity and npub.",
   inputSchema: {
     type: "object",
     properties: {}
@@ -383,7 +388,7 @@ globalToolRegistry.registerTool({
 });
 globalToolRegistry.registerTool({
   name: "get_spending_guardrails",
-  description: "Query current AI agent spending guardrails, daily budget, 24-hour satoshis spent, remaining allowance, and per-transaction limits.",
+  description: "Check current AI agent spending budget, daily limits, and remaining satoshis.",
   inputSchema: {
     type: "object",
     properties: {}
@@ -395,7 +400,7 @@ globalToolRegistry.registerTool({
 });
 globalToolRegistry.registerTool({
   name: "get_agent_telemetry",
-  description: "Inspect autonomous agent spending metrics, rolling 24h budget allowance, blocked Sybil threats, and recent telemetry events.",
+  description: "Retrieve agent telemetry metrics, rolling spend volume, and security events.",
   inputSchema: {
     type: "object",
     properties: {
@@ -827,207 +832,98 @@ try {
   } catch {
   }
 }
+var VALID_PROFILES = [
+  "minimal",
+  "radar",
+  "payment",
+  "full"
+];
+var PROFILE_TOOLS = {
+  minimal: [
+    "check_trust_score",
+    "pay_cashu_nutzap",
+    "get_spending_guardrails"
+  ],
+  radar: [
+    "check_trust_score",
+    "audit_cashu_mint"
+  ],
+  payment: [
+    "pay_cashu_nutzap",
+    "pay_lightning_nwc",
+    "get_spending_guardrails"
+  ],
+  full: [
+    "check_trust_score",
+    "pay_cashu_nutzap",
+    "request_nip90_job",
+    "pay_lightning_nwc",
+    "pay_with_nwc",
+    "audit_cashu_mint",
+    "route_cashu_mint",
+    "get_agent_identity",
+    "get_spending_guardrails",
+    "get_agent_telemetry"
+  ]
+};
+function resolveActiveProfile() {
+  if (process.env.npm_config_profile) {
+    const val = process.env.npm_config_profile.trim().toLowerCase();
+    if (VALID_PROFILES.includes(val)) {
+      return val;
+    }
+  }
+  for (let i = 0; i < process.argv.length; i++) {
+    const arg = process.argv[i];
+    if (arg.startsWith("--profile=")) {
+      const val = arg.split("=")[1]?.trim().toLowerCase();
+      if (VALID_PROFILES.includes(val)) {
+        return val;
+      }
+    } else if (arg === "--profile" && i + 1 < process.argv.length) {
+      const val = process.argv[i + 1]?.trim().toLowerCase();
+      if (VALID_PROFILES.includes(val)) {
+        return val;
+      }
+    }
+  }
+  const envProfile = process.env.NOSTRPULSE_PROFILE?.trim().toLowerCase();
+  if (envProfile && VALID_PROFILES.includes(envProfile)) {
+    return envProfile;
+  }
+  return "full";
+}
+var activeProfile = resolveActiveProfile();
+var allowedTools = new Set(PROFILE_TOOLS[activeProfile]);
+function isToolAllowed(name) {
+  return allowedTools.has(name);
+}
 var mcpServer = new McpServer({
   name: "nostrpulse-mcp-server",
   version: "1.0.0"
 });
-mcpServer.tool(
-  "check_trust_score",
-  "Calculate Nostr Web-of-Trust (WoT) distance, Economic Stake (Zap satoshis), and anti-Sybil Trust Score (0-100) for any Nostr identity.",
-  {
-    pubkey: z2.string().describe(
-      "Nostr public key in 64-char lowercase hex or bech32 npub format (e.g. 'npub1...', '3bf0c63fc...')"
-    )
-  },
-  async ({ pubkey }) => {
-    try {
-      await initDatabase();
-      const hex = normalizePubkey(pubkey);
-      if (!hex) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  error: "Invalid public key format. Expected 64-char hex or bech32 npub.",
-                  input: pubkey
-                },
-                null,
-                2
-              )
-            }
-          ],
-          isError: true
-        };
-      }
-      const npub = encodeNpub(hex);
-      const wotResult = getWebOfTrustDistance(hex);
-      const [creatorDb, zapRow] = await Promise.all([
-        getCreatorFromDb(hex),
-        getZapTotalsFromDb(hex)
-      ]);
-      const verifiedZapsSats = zapRow?.valid_sender_sats ?? 0;
-      const totalZapsSats = zapRow?.total_sats ?? 0;
-      const sybilFilteredSats = Math.max(0, totalZapsSats - verifiedZapsSats);
-      let score = creatorDb ? creatorDb.score : 0;
-      let tier = "Unverified / Potential Bot";
-      if (creatorDb) {
-        score = creatorDb.score;
-        if (wotResult.distance === 0 || score >= 80 && wotResult.distance <= 1) {
-          tier = "Verified Builder";
-        } else if (score >= 50 && wotResult.distance <= 2) {
-          tier = "Active Contributor";
-        } else {
-          tier = "Unverified / Potential Bot";
-        }
-      } else {
-        const calculated = calculateTrustScore(
-          { pubkey: hex, npub, name: "" },
-          void 0,
-          wotResult
-        );
-        score = calculated.score;
-        tier = calculated.tier;
-      }
-      const payload = {
-        pubkey: hex,
-        npub,
-        name: creatorDb?.name || void 0,
-        score: Math.round(score),
-        tier,
-        wot: {
-          direct_anchor_endorsed: wotResult.distance === 0 || wotResult.distance === 1 && wotResult.endorsedByCount > 0,
-          distance: wotResult.distance,
-          endorsers_count: wotResult.endorsedByCount,
-          endorsers: wotResult.endorsers,
-          sybil_risk: wotResult.sybilRisk
-        },
-        economic_stake: {
-          verified_zaps_sats: verifiedZapsSats,
-          sybil_filtered_sats: sybilFilteredSats
-        }
-      };
-      await logTelemetryEvent({
-        eventType: "radar.trust_score.checked",
-        category: "radar",
-        status: "success",
-        targetPubkey: hex,
-        metadata: { score: payload.score, tier: payload.tier, distance: payload.wot.distance }
-      });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(payload, null, 2)
-          }
-        ]
-      };
-    } catch (err) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error calculating trust score: ${err?.message || String(err)}`
-          }
-        ],
-        isError: true
-      };
-    }
-  }
-);
-mcpServer.tool(
-  "pay_cashu_nutzap",
-  "Send a Cashu eCash NutZap (NIP-61 Kind 9321 via NIP-44 encryption) to a Nostr recipient pubkey using Cashu eCash tokens or request a mint invoice.",
-  {
-    recipient: z2.string().describe("Recipient Nostr public key (64-char hex or bech32 npub)"),
-    amountSats: z2.number().int().min(1).describe("Amount in satoshis to pay"),
-    cashuToken: z2.string().optional().describe(
-      "Optional Cashu eCash token string (cashuA... or cashuB...). If omitted, generates a Lightning invoice to mint proofs"
-    ),
-    mintUrl: z2.string().optional().describe("Target Cashu Mint URL (default: https://testnut.cashu.space)"),
-    comment: z2.string().optional().describe("Optional payment message or memo to include in the NutZap")
-  },
-  async ({ recipient, amountSats, cashuToken, mintUrl, comment }) => {
-    try {
-      await initDatabase();
-      const hexRecipient = normalizePubkey(recipient);
-      if (!hexRecipient) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                { error: "Invalid recipient public key format.", recipient },
-                null,
-                2
-              )
-            }
-          ],
-          isError: true
-        };
-      }
-      let cleanMint = mintUrl?.trim();
-      if (!cleanMint) {
-        try {
-          const routeRes = await routeCashuMint({ amountSats });
-          if (routeRes.meshHealthy && routeRes.selectedMint?.mintUrl) {
-            cleanMint = routeRes.selectedMint.mintUrl;
-          }
-        } catch {
-        }
-      }
-      cleanMint = (cleanMint || DEFAULT_CASHU_MINT).trim();
-      const guardrail = await assertSpendingAllowed({
-        amountSats,
-        recipientPubkey: hexRecipient,
-        rail: "nutzap"
-      });
-      if (!guardrail.allowed) {
-        await logAgentEvent({
-          type: "radar_block",
-          data: {
-            amountSats,
-            recipient: hexRecipient,
-            rail: "nutzap",
-            reason: guardrail.reason
-          }
-        });
-        await logTelemetryEvent({
-          eventType: "payment.guardrail_blocked",
-          category: "payment",
-          status: "blocked",
-          targetPubkey: hexRecipient,
-          amountSats,
-          metadata: { rail: "nutzap", reason: guardrail.reason },
-          error: guardrail.reason
-        });
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  status: "blocked_by_guardrails",
-                  reason: guardrail.reason
-                },
-                null,
-                2
-              )
-            }
-          ]
-        };
-      }
-      if (cashuToken && cashuToken.trim()) {
-        const parsedToken = parseCashuToken(cashuToken.trim());
-        if (parsedToken.totalAmountSats < amountSats) {
+if (isToolAllowed("check_trust_score")) {
+  mcpServer.tool(
+    "check_trust_score",
+    "Verify anti-Sybil Trust Score (0-100) and Web-of-Trust distance for a Nostr pubkey.",
+    {
+      pubkey: z2.string().describe(
+        "Target Nostr public key in 64-char hex or npub format"
+      )
+    },
+    async ({ pubkey }) => {
+      try {
+        await initDatabase();
+        const hex = normalizePubkey(pubkey);
+        if (!hex) {
           return {
             content: [
               {
                 type: "text",
                 text: JSON.stringify(
                   {
-                    error: `Insufficient token balance. Token has ${parsedToken.totalAmountSats} sats, but ${amountSats} sats required.`
+                    error: "Invalid public key format. Expected 64-char hex or bech32 npub.",
+                    input: pubkey
                   },
                   null,
                   2
@@ -1037,159 +933,340 @@ mcpServer.tool(
             isError: true
           };
         }
-        const zapResult = await sendCashuNutZap({
-          recipientPubkey: hexRecipient,
-          cashuToken: cashuToken.trim(),
-          amountSats,
-          comment: comment || "Value-4-Value eCash NutZap \u{1F95C}\u26A1",
-          mintUrl: cleanMint
+        const npub = encodeNpub(hex);
+        const wotResult = getWebOfTrustDistance(hex);
+        const [creatorDb, zapRow] = await Promise.all([
+          getCreatorFromDb(hex),
+          getZapTotalsFromDb(hex)
+        ]);
+        const verifiedZapsSats = zapRow?.valid_sender_sats ?? 0;
+        const totalZapsSats = zapRow?.total_sats ?? 0;
+        const sybilFilteredSats = Math.max(0, totalZapsSats - verifiedZapsSats);
+        let score = creatorDb ? creatorDb.score : 0;
+        let tier = "Unverified / Potential Bot";
+        if (creatorDb) {
+          score = creatorDb.score;
+          if (wotResult.distance === 0 || score >= 80 && wotResult.distance <= 1) {
+            tier = "Verified Builder";
+          } else if (score >= 50 && wotResult.distance <= 2) {
+            tier = "Active Contributor";
+          } else {
+            tier = "Unverified / Potential Bot";
+          }
+        } else {
+          const calculated = calculateTrustScore(
+            { pubkey: hex, npub, name: "" },
+            void 0,
+            wotResult
+          );
+          score = calculated.score;
+          tier = calculated.tier;
+        }
+        const payload = {
+          pubkey: hex,
+          npub,
+          name: creatorDb?.name || void 0,
+          score: Math.round(score),
+          tier,
+          wot: {
+            direct_anchor_endorsed: wotResult.distance === 0 || wotResult.distance === 1 && wotResult.endorsedByCount > 0,
+            distance: wotResult.distance,
+            endorsers_count: wotResult.endorsedByCount,
+            endorsers: wotResult.endorsers,
+            sybil_risk: wotResult.sybilRisk
+          },
+          economic_stake: {
+            verified_zaps_sats: verifiedZapsSats,
+            sybil_filtered_sats: sybilFilteredSats
+          }
+        };
+        await logTelemetryEvent({
+          eventType: "radar.trust_score.checked",
+          category: "radar",
+          status: "success",
+          targetPubkey: hex,
+          metadata: { score: payload.score, tier: payload.tier, distance: payload.wot.distance }
         });
-        await Promise.allSettled([
-          recordAgentSpending({
-            amountSats,
-            rail: "cashu",
-            recipientPubkey: hexRecipient,
-            eventId: zapResult.id,
-            memo: comment
-          }),
-          logAgentEvent({
-            type: "payment",
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(payload, null, 2)
+            }
+          ]
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error calculating trust score: ${err?.message || String(err)}`
+            }
+          ],
+          isError: true
+        };
+      }
+    }
+  );
+}
+if (isToolAllowed("pay_cashu_nutzap")) {
+  mcpServer.tool(
+    "pay_cashu_nutzap",
+    "Send an eCash NutZap payment (NIP-61) to a Nostr recipient under guardrail limits.",
+    {
+      recipient: z2.string().describe("Recipient Nostr public key (64-char hex or bech32 npub)"),
+      amountSats: z2.number().int().min(1).describe("Amount in satoshis to pay"),
+      cashuToken: z2.string().nullish().describe(
+        "Optional Cashu eCash token string; if omitted, generates a mint quote invoice"
+      ),
+      mintUrl: z2.string().nullish().describe("Optional target Cashu mint URL"),
+      comment: z2.string().nullish().describe("Optional payment message memo")
+    },
+    async ({ recipient, amountSats, cashuToken, mintUrl, comment }) => {
+      try {
+        await initDatabase();
+        const hexRecipient = normalizePubkey(recipient);
+        if (!hexRecipient) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  { error: "Invalid recipient public key format.", recipient },
+                  null,
+                  2
+                )
+              }
+            ],
+            isError: true
+          };
+        }
+        let cleanMint = mintUrl?.trim();
+        if (!cleanMint) {
+          try {
+            const routeRes = await routeCashuMint({ amountSats });
+            if (routeRes.meshHealthy && routeRes.selectedMint?.mintUrl) {
+              cleanMint = routeRes.selectedMint.mintUrl;
+            }
+          } catch {
+          }
+        }
+        cleanMint = (cleanMint || DEFAULT_CASHU_MINT).trim();
+        const guardrail = await assertSpendingAllowed({
+          amountSats,
+          recipientPubkey: hexRecipient,
+          rail: "nutzap"
+        });
+        if (!guardrail.allowed) {
+          await logAgentEvent({
+            type: "radar_block",
             data: {
               amountSats,
-              rail: "nutzap",
               recipient: hexRecipient,
-              mint: cleanMint,
-              eventId: zapResult.id,
-              status: "settled"
+              rail: "nutzap",
+              reason: guardrail.reason
             }
-          }),
-          accumulateZapTotals({
-            pubkey: hexRecipient,
-            addTotalSats: amountSats,
-            addValidSats: amountSats
-          }),
-          recordZapEdge("mcp_agent_sender", hexRecipient, amountSats),
-          logTelemetryEvent({
-            eventType: "payment.nutzap.settled",
+          });
+          await logTelemetryEvent({
+            eventType: "payment.guardrail_blocked",
             category: "payment",
-            status: "success",
+            status: "blocked",
             targetPubkey: hexRecipient,
             amountSats,
-            metadata: { eventId: zapResult.id, mintUrl: cleanMint }
-          })
-        ]);
-        const current24h = await getRolling24hSpend();
-        const policy = getSpendingPolicy();
-        const responseData = {
+            metadata: { rail: "nutzap", reason: guardrail.reason },
+            error: guardrail.reason
+          });
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    status: "blocked_by_guardrails",
+                    reason: guardrail.reason
+                  },
+                  null,
+                  2
+                )
+              }
+            ]
+          };
+        }
+        if (cashuToken && cashuToken.trim()) {
+          const parsedToken = parseCashuToken(cashuToken.trim());
+          if (parsedToken.totalAmountSats < amountSats) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(
+                    {
+                      error: `Insufficient token balance. Token has ${parsedToken.totalAmountSats} sats, but ${amountSats} sats required.`
+                    },
+                    null,
+                    2
+                  )
+                }
+              ],
+              isError: true
+            };
+          }
+          const zapResult = await sendCashuNutZap({
+            recipientPubkey: hexRecipient,
+            cashuToken: cashuToken.trim(),
+            amountSats,
+            comment: comment || "Value-4-Value eCash NutZap \u{1F95C}\u26A1",
+            mintUrl: cleanMint
+          });
+          await Promise.allSettled([
+            recordAgentSpending({
+              amountSats,
+              rail: "cashu",
+              recipientPubkey: hexRecipient,
+              eventId: zapResult.id,
+              memo: comment || void 0
+            }),
+            logAgentEvent({
+              type: "payment",
+              data: {
+                amountSats,
+                rail: "nutzap",
+                recipient: hexRecipient,
+                mint: cleanMint,
+                eventId: zapResult.id,
+                status: "settled"
+              }
+            }),
+            accumulateZapTotals({
+              pubkey: hexRecipient,
+              addTotalSats: amountSats,
+              addValidSats: amountSats
+            }),
+            recordZapEdge("mcp_agent_sender", hexRecipient, amountSats),
+            logTelemetryEvent({
+              eventType: "payment.nutzap.settled",
+              category: "payment",
+              status: "success",
+              targetPubkey: hexRecipient,
+              amountSats,
+              metadata: { eventId: zapResult.id, mintUrl: cleanMint }
+            })
+          ]);
+          const current24h = await getRolling24hSpend();
+          const policy = getSpendingPolicy();
+          const responseData = {
+            success: true,
+            status: "settled",
+            kind: 9321,
+            eventId: zapResult.id,
+            amountSats,
+            recipient: hexRecipient,
+            changeToken: zapResult.changeToken,
+            guardrail: {
+              remainingDailySats: Math.max(0, policy.dailyLimitSats - current24h)
+            },
+            message: `Successfully delivered ${amountSats.toLocaleString()} Sats NutZap to ${hexRecipient}!`
+          };
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(responseData, null, 2)
+              }
+            ]
+          };
+        }
+        const quote = await createCashuMintQuote(amountSats, cleanMint);
+        const quoteData = {
           success: true,
-          status: "settled",
-          kind: 9321,
-          eventId: zapResult.id,
+          status: "payment_required",
+          quoteId: quote.quoteId,
+          invoice: quote.invoice,
           amountSats,
+          mintUrl: quote.mintUrl,
           recipient: hexRecipient,
-          changeToken: zapResult.changeToken,
-          guardrail: {
-            remainingDailySats: Math.max(0, policy.dailyLimitSats - current24h)
-          },
-          message: `Successfully delivered ${amountSats.toLocaleString()} Sats NutZap to ${hexRecipient}!`
+          message: `Lightning invoice generated. Pay ${amountSats} sats to mint proofs and complete NutZap.`
         };
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(responseData, null, 2)
+              text: JSON.stringify(quoteData, null, 2)
             }
           ]
         };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error processing NutZap payment: ${err?.message || String(err)}`
+            }
+          ],
+          isError: true
+        };
       }
-      const quote = await createCashuMintQuote(amountSats, cleanMint);
-      const quoteData = {
-        success: true,
-        status: "payment_required",
-        quoteId: quote.quoteId,
-        invoice: quote.invoice,
-        amountSats,
-        mintUrl: quote.mintUrl,
-        recipient: hexRecipient,
-        message: `Lightning invoice generated. Pay ${amountSats} sats to mint proofs and complete NutZap.`
-      };
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(quoteData, null, 2)
-          }
-        ]
-      };
-    } catch (err) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error processing NutZap payment: ${err?.message || String(err)}`
-          }
-        ],
-        isError: true
-      };
     }
-  }
-);
-mcpServer.tool(
-  "request_nip90_job",
-  "Dispatch a distributed NIP-90 Data Vending Machine (DVM) job request (Kind 5000/5300) across Nostr relays for analytics/reputation computation, with automatic fallback to local database.",
-  {
-    prompt: z2.string().describe("Target Nostr public key (hex or npub) or computation input query"),
-    category: z2.string().optional().describe(
-      "Task category: 'zap-analytics', 'reputation', or 'trust-score' (default: 'trust-score')"
-    ),
-    timeframe: z2.string().optional().describe("Historical timeframe: 'all-time', '1y', or '30d' (default: 'all-time')"),
-    bidSats: z2.number().int().min(0).optional().describe("Bid fee offered to DVM worker in satoshis (default: 5)"),
-    timeoutMs: z2.number().int().min(500).max(1e4).optional().describe("Timeout in milliseconds before falling back to local database (default: 3500)")
-  },
-  async ({ prompt, category, timeframe, bidSats, timeoutMs }) => {
-    try {
-      const hex = normalizePubkey(prompt) || prompt;
-      const result = await requestDvmAnalyticsWithFallback({
-        targetPubkey: hex,
-        category: category || "trust-score",
-        timeframe: timeframe || "all-time",
-        bidSats: bidSats ?? 5,
-        timeoutMs: timeoutMs ?? 3500
-      });
-      const responsePayload = {
-        pubkey: result.pubkey,
-        totalSats: result.totalSats,
-        validSenderSats: result.validSenderSats,
-        zapCount: result.zapCount,
-        trustScore: result.trustScore,
-        reputationTier: result.reputationTier,
-        source: result.source,
-        dvmFallback: result.dvmFallback,
-        dvmPubkey: result.dvmPubkey || void 0,
-        jobId: result.jobId || void 0,
-        latencyMs: result.latencyMs
-      };
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(responsePayload, null, 2)
-          }
-        ]
-      };
-    } catch (err) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error processing NIP-90 DVM request: ${err?.message || String(err)}`
-          }
-        ],
-        isError: true
-      };
+  );
+}
+if (isToolAllowed("request_nip90_job")) {
+  mcpServer.tool(
+    "request_nip90_job",
+    "Dispatch a NIP-90 DVM analytics computation task across Nostr relays with local fallback.",
+    {
+      prompt: z2.string().describe("Target Nostr public key or computation query"),
+      category: z2.enum(["zap-analytics", "reputation", "trust-score"]).optional().describe(
+        "Task category: 'zap-analytics', 'reputation', or 'trust-score' (default: 'trust-score')"
+      ),
+      timeframe: z2.enum(["all-time", "1y", "30d"]).optional().describe("Historical timeframe: 'all-time', '1y', or '30d' (default: 'all-time')"),
+      bidSats: z2.number().int().min(0).optional().describe("Bid fee in satoshis (default: 5)"),
+      timeoutMs: z2.number().int().min(500).max(1e4).optional().describe("Timeout in milliseconds (default: 3500)")
+    },
+    async ({ prompt, category, timeframe, bidSats, timeoutMs }) => {
+      try {
+        const hex = normalizePubkey(prompt) || prompt;
+        const result = await requestDvmAnalyticsWithFallback({
+          targetPubkey: hex,
+          category: category || "trust-score",
+          timeframe: timeframe || "all-time",
+          bidSats: bidSats ?? 5,
+          timeoutMs: timeoutMs ?? 3500
+        });
+        const responsePayload = {
+          pubkey: result.pubkey,
+          totalSats: result.totalSats,
+          validSenderSats: result.validSenderSats,
+          zapCount: result.zapCount,
+          trustScore: result.trustScore,
+          reputationTier: result.reputationTier,
+          source: result.source,
+          dvmFallback: result.dvmFallback,
+          dvmPubkey: result.dvmPubkey || void 0,
+          jobId: result.jobId || void 0,
+          latencyMs: result.latencyMs
+        };
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(responsePayload, null, 2)
+            }
+          ]
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error processing NIP-90 DVM request: ${err?.message || String(err)}`
+            }
+          ],
+          isError: true
+        };
+      }
     }
-  }
-);
+  );
+}
 var nwcToolHandler = async ({ invoice, nwcUri, timeoutMs, amountMsat }) => {
   try {
     const amountSats = amountMsat && amountMsat > 0 ? Math.round(amountMsat / 1e3) : decodeBolt11AmountSats(invoice) || 1;
@@ -1330,238 +1407,262 @@ var nwcToolHandler = async ({ invoice, nwcUri, timeoutMs, amountMsat }) => {
   }
 };
 var nwcToolSchema = {
-  invoice: z2.string().describe("BOLT-11 Lightning invoice."),
+  invoice: z2.string().describe("BOLT-11 Lightning invoice"),
   nwcUri: z2.string().optional().describe(
-    "Explicit NWC connection URI (falls back to env NWC_CONNECTION_URI)."
+    "Optional NWC connection URI (falls back to env NWC_CONNECTION_URI)"
   ),
   timeoutMs: z2.number().int().min(1e3).max(6e4).optional().describe("Timeout in milliseconds (default: 15000)"),
   amountMsat: z2.number().int().min(1).optional().describe("Optional amount in millisatoshis for amountless invoices")
 };
-mcpServer.tool(
-  "pay_lightning_nwc",
-  "Settle BOLT-11 Lightning invoices directly through an autonomous node via NIP-47 Nostr Wallet Connect (Alby Hub, Phoenixd, Umbrel).",
-  nwcToolSchema,
-  nwcToolHandler
-);
-mcpServer.tool(
-  "pay_with_nwc",
-  "Alias for pay_lightning_nwc: settle BOLT-11 Lightning invoices via NIP-47 NWC.",
-  nwcToolSchema,
-  nwcToolHandler
-);
-mcpServer.tool(
-  "audit_cashu_mint",
-  "Audit and evaluate counterparty risk of a Cashu eCash Mint using Web-of-Trust graph distance, NIP-05 sovereign domain validation, and admin reputation.",
-  {
-    mintUrl: z2.string().describe("Target Cashu mint URL (e.g., https://mint.minibits.cash/Bitcoin)."),
-    forceRefresh: z2.boolean().optional().describe("Bypass in-memory audit cache and perform fresh live probe (default: false)")
-  },
-  async ({ mintUrl, forceRefresh }) => {
-    try {
-      await initDatabase();
-      const audit = await auditCashuMint(mintUrl, forceRefresh ?? false);
-      await logTelemetryEvent({
-        eventType: "mint.audited",
-        category: "mint",
-        status: audit.isOnline ? "success" : "failed",
-        metadata: { mintUrl, trustScore: audit.trustScore, riskLevel: audit.riskLevel }
-      });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(audit, null, 2)
-          }
-        ]
-      };
-    } catch (err) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error auditing Cashu Mint: ${err?.message || String(err)}`
-          }
-        ],
-        isError: true
-      };
+if (isToolAllowed("pay_lightning_nwc")) {
+  mcpServer.tool(
+    "pay_lightning_nwc",
+    "Pay a BOLT-11 Lightning invoice via NIP-47 Nostr Wallet Connect.",
+    nwcToolSchema,
+    nwcToolHandler
+  );
+}
+if (activeProfile === "full" && isToolAllowed("pay_with_nwc")) {
+  mcpServer.tool(
+    "pay_with_nwc",
+    "Pay a BOLT-11 Lightning invoice via NIP-47 Nostr Wallet Connect (alias).",
+    nwcToolSchema,
+    nwcToolHandler
+  );
+}
+if (isToolAllowed("audit_cashu_mint")) {
+  mcpServer.tool(
+    "audit_cashu_mint",
+    "Audit Cashu mint health, NUT-06 status, and counterparty risk score.",
+    {
+      mintUrl: z2.string().describe("Target Cashu mint URL to audit"),
+      forceRefresh: z2.boolean().optional().describe("Bypass in-memory audit cache and perform fresh live probe (default: false)")
+    },
+    async ({ mintUrl, forceRefresh }) => {
+      try {
+        await initDatabase();
+        const audit = await auditCashuMint(mintUrl, forceRefresh ?? false);
+        await logTelemetryEvent({
+          eventType: "mint.audited",
+          category: "mint",
+          status: audit.isOnline ? "success" : "failed",
+          metadata: { mintUrl, trustScore: audit.trustScore, riskLevel: audit.riskLevel }
+        });
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(audit, null, 2)
+            }
+          ]
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error auditing Cashu Mint: ${err?.message || String(err)}`
+            }
+          ],
+          isError: true
+        };
+      }
     }
-  }
-);
-mcpServer.tool(
-  "route_cashu_mint",
-  "Dynamically discover and route to the highest-trust, lowest-latency Cashu Mint from the WoT-Gated Dynamic Mint Mesh.",
-  {
-    amountSats: z2.number().int().min(1).optional().describe("Intended payment or minting amount in Satoshis"),
-    preferredMint: z2.string().optional().describe("Optional preferred mint URL to prioritize if verified and healthy"),
-    minTrustScore: z2.number().int().min(0).max(100).optional().describe("Minimum WoT Trust Score required to pass the security gate (default: 45)")
-  },
-  async ({ amountSats, preferredMint, minTrustScore }) => {
-    try {
-      await initDatabase();
-      const routing = await routeCashuMint({
-        amountSats,
-        preferredMint,
-        minTrustScore: minTrustScore ?? 45
-      });
-      await logTelemetryEvent({
-        eventType: "mint.routed",
-        category: "mint",
-        status: routing.meshHealthy ? "success" : "failed",
-        amountSats,
-        metadata: { selectedMint: routing.selectedMint?.mintUrl }
-      });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(routing, null, 2)
-          }
-        ]
-      };
-    } catch (err) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error routing Cashu Mint: ${err?.message || String(err)}`
-          }
-        ],
-        isError: true
-      };
+  );
+}
+if (isToolAllowed("route_cashu_mint")) {
+  mcpServer.tool(
+    "route_cashu_mint",
+    "Route to the highest-trust, lowest-latency Cashu mint for a payment.",
+    {
+      amountSats: z2.number().int().min(1).optional().describe("Payment amount in satoshis"),
+      preferredMint: z2.string().optional().describe("Optional preferred mint URL to prioritize if verified and healthy"),
+      minTrustScore: z2.number().int().min(0).max(100).optional().describe("Minimum required trust score (default: 45)")
+    },
+    async ({ amountSats, preferredMint, minTrustScore }) => {
+      try {
+        await initDatabase();
+        const routing = await routeCashuMint({
+          amountSats,
+          preferredMint,
+          minTrustScore: minTrustScore ?? 45
+        });
+        await logTelemetryEvent({
+          eventType: "mint.routed",
+          category: "mint",
+          status: routing.meshHealthy ? "success" : "failed",
+          amountSats,
+          metadata: { selectedMint: routing.selectedMint?.mintUrl }
+        });
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(routing, null, 2)
+            }
+          ]
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error routing Cashu Mint: ${err?.message || String(err)}`
+            }
+          ],
+          isError: true
+        };
+      }
     }
-  }
-);
-mcpServer.tool(
-  "get_agent_identity",
-  "Retrieve active autonomous AI agent cryptographic public identity (pubkey, npub, identity source, and ephemeral status).",
-  {},
-  async () => {
-    try {
-      const identity = getOrInitAgentIdentity();
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                pubkey: identity.pubkey,
-                npub: identity.npub,
-                source: identity.source,
-                isEphemeral: identity.isEphemeral,
-                createdAt: identity.createdAt
-              },
-              null,
-              2
-            )
-          }
-        ]
-      };
-    } catch (err) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error resolving agent identity: ${err?.message || String(err)}`
-          }
-        ],
-        isError: true
-      };
+  );
+}
+if (isToolAllowed("get_agent_identity")) {
+  mcpServer.tool(
+    "get_agent_identity",
+    "Get the autonomous agent's Nostr public identity and npub.",
+    {},
+    async () => {
+      try {
+        const identity = getOrInitAgentIdentity();
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  pubkey: identity.pubkey,
+                  npub: identity.npub,
+                  source: identity.source,
+                  isEphemeral: identity.isEphemeral,
+                  createdAt: identity.createdAt
+                },
+                null,
+                2
+              )
+            }
+          ]
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error resolving agent identity: ${err?.message || String(err)}`
+            }
+          ],
+          isError: true
+        };
+      }
     }
-  }
-);
-mcpServer.tool(
-  "get_spending_guardrails",
-  "Query current AI agent spending guardrails, daily budget, 24-hour satoshis spent, remaining allowance, and per-transaction limits.",
-  {},
-  async () => {
-    try {
-      await initDatabase();
-      const summary = await getSpendingSummary();
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(summary, null, 2)
-          }
-        ]
-      };
-    } catch (err) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error inspecting spending guardrails: ${err?.message || String(err)}`
-          }
-        ],
-        isError: true
-      };
+  );
+}
+if (isToolAllowed("get_spending_guardrails")) {
+  mcpServer.tool(
+    "get_spending_guardrails",
+    "Check current AI agent spending budget, daily limits, and remaining satoshis.",
+    {},
+    async () => {
+      try {
+        await initDatabase();
+        const summary = await getSpendingSummary();
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(summary, null, 2)
+            }
+          ]
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error inspecting spending guardrails: ${err?.message || String(err)}`
+            }
+          ],
+          isError: true
+        };
+      }
     }
-  }
-);
-mcpServer.tool(
-  "get_agent_telemetry",
-  "Inspect autonomous agent spending metrics, rolling 24h budget allowance, blocked Sybil threats, and recent telemetry events.",
-  {
-    timeframeHours: z2.number().int().min(1).max(720).optional().describe("Rolling window in hours to inspect (default: 24)"),
-    limit: z2.number().int().min(1).max(100).optional().describe("Maximum number of telemetry events to retrieve (default: 20)")
-  },
-  async ({ timeframeHours, limit }) => {
-    try {
-      await initDatabase();
-      const hours = timeframeHours ?? 24;
-      const policy = getSpendingPolicy();
-      const spentTodaySats = await getRolling24hSpend();
-      const remainingSats = Math.max(0, policy.dailyLimitSats - spentTodaySats);
-      const summary = await getAgentTelemetrySummary(hours);
-      const overview = await getTelemetryOverview();
-      const events = await queryTelemetryEvents({ limit: limit ?? 20 });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                dailyLimitSats: policy.dailyLimitSats,
-                spentTodaySats,
-                remainingSats,
-                totalSpentSats: summary.totalSpentSats,
-                txCount: summary.txCount,
-                blockedSybilAttacks: summary.blockedSybilAttacks,
-                recentEvents: summary.recentEvents.slice(0, limit ?? 20),
-                events,
-                overview: {
-                  totalVolumeSats: overview.totalVolumeSats,
-                  totalEvents: overview.totalEvents,
-                  successRatePercent: overview.successRatePercent,
-                  byCategory: overview.byCategory
-                }
-              },
-              null,
-              2
-            )
-          }
-        ]
-      };
-    } catch (err) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error retrieving agent telemetry: ${err?.message || String(err)}`
-          }
-        ],
-        isError: true
-      };
+  );
+}
+if (isToolAllowed("get_agent_telemetry")) {
+  mcpServer.tool(
+    "get_agent_telemetry",
+    "Retrieve agent telemetry metrics, rolling spend volume, and security events.",
+    {
+      timeframeHours: z2.number().int().min(1).max(720).optional().describe("Timeframe in hours (default: 24)"),
+      limit: z2.number().int().min(1).max(100).optional().describe("Max events to return (default: 20)")
+    },
+    async ({ timeframeHours, limit }) => {
+      try {
+        await initDatabase();
+        const hours = timeframeHours ?? 24;
+        const policy = getSpendingPolicy();
+        const spentTodaySats = await getRolling24hSpend();
+        const remainingSats = Math.max(0, policy.dailyLimitSats - spentTodaySats);
+        const summary = await getAgentTelemetrySummary(hours);
+        const overview = await getTelemetryOverview();
+        const events = await queryTelemetryEvents({ limit: limit ?? 20 });
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  dailyLimitSats: policy.dailyLimitSats,
+                  spentTodaySats,
+                  remainingSats,
+                  totalSpentSats: summary.totalSpentSats,
+                  txCount: summary.txCount,
+                  blockedSybilAttacks: summary.blockedSybilAttacks,
+                  recentEvents: summary.recentEvents.slice(0, limit ?? 20),
+                  events,
+                  overview: {
+                    totalVolumeSats: overview.totalVolumeSats,
+                    totalEvents: overview.totalEvents,
+                    successRatePercent: overview.successRatePercent,
+                    byCategory: overview.byCategory
+                  }
+                },
+                null,
+                2
+              )
+            }
+          ]
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error retrieving agent telemetry: ${err?.message || String(err)}`
+            }
+          ],
+          isError: true
+        };
+      }
     }
-  }
-);
-globalToolRegistry.registerToMcpServer(mcpServer);
+  );
+}
+globalToolRegistry.registerToMcpServer(mcpServer, Array.from(allowedTools));
 async function main() {
   const transport = new StdioServerTransport();
   await mcpServer.connect(transport);
-  console.error("[NostrPulse MCP] StdioServerTransport connected. Server running on stdio JSON-RPC.");
+  console.error(
+    `[NostrPulse MCP] Active Profile: ${activeProfile} (${allowedTools.size} tools active). StdioServerTransport connected.`
+  );
 }
 main().catch((error) => {
   console.error("[NostrPulse MCP] Fatal error starting MCP server:", error);
   process.exit(1);
 });
+export {
+  PROFILE_TOOLS,
+  VALID_PROFILES,
+  activeProfile,
+  allowedTools,
+  isToolAllowed,
+  resolveActiveProfile
+};
