@@ -19,8 +19,11 @@ function getSpendingConfig() {
   };
   const isEnabled = process.env.AGENT_GUARDRAILS_ENABLED !== "false" && process.env.AGENT_GUARDRAILS_ENABLED !== "0";
   return {
-    maxPerTxSats: parseEnvInt("AGENT_MAX_TX_SATS", 5e3),
-    dailyBudgetSats: parseEnvInt("AGENT_DAILY_BUDGET_SATS", 25e3),
+    maxPerTxSats: parseEnvInt("AGENT_MAX_SATS_PER_TX", parseEnvInt("AGENT_MAX_TX_SATS", 50)),
+    dailyBudgetSats: parseEnvInt(
+      "AGENT_DAILY_LIMIT_SATS",
+      parseEnvInt("AGENT_DAILY_BUDGET_SATS", 500)
+    ),
     minRecipientTrustScore: parseEnvInt("AGENT_MIN_RECIPIENT_TRUST_SCORE", 0),
     enabled: isEnabled
   };
@@ -35,6 +38,14 @@ function updateSpendingConfig(newConfig) {
 }
 async function getDailySpentSats() {
   const oneDayAgoSec = Math.floor(Date.now() / 1e3) - 86400;
+  try {
+    const { getRolling24hApprovedSpend } = await import("./db-LHPVZTQM.js");
+    const rollingSpent = await getRolling24hApprovedSpend(oneDayAgoSec);
+    if (rollingSpent > 0) {
+      return { totalSats: rollingSpent, count: 1 };
+    }
+  } catch {
+  }
   try {
     const dbRecords = await getRecentSpendingRecords(oneDayAgoSec);
     if (dbRecords && dbRecords.length > 0) {

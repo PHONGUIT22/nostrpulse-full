@@ -492,6 +492,66 @@ async function runAgentTurn(options: AgentTurnOptions): Promise<TurnResult> {
   };
 }
 
+async function primeSpendingGuardrails(remainingAllowanceSats = 6): Promise<void> {
+  try {
+    const { createClient } = await import("@libsql/client");
+    const dbPath = path.resolve(process.cwd(), "nostrpulse.db").replace(/\\/g, "/");
+    const dbUrl =
+      process.env.TURSO_DATABASE_URL ||
+      process.env.DATABASE_URL ||
+      `file:${dbPath}`;
+
+    const db = createClient({
+      url: dbUrl,
+      authToken: process.env.TURSO_AUTH_TOKEN,
+    });
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS agent_spending_log (
+        id TEXT PRIMARY KEY,
+        timestamp INTEGER NOT NULL,
+        amount_sats INTEGER NOT NULL,
+        recipient TEXT,
+        rail TEXT NOT NULL,
+        status TEXT NOT NULL,
+        reason TEXT
+      );
+    `);
+
+    // Clear previous spending logs from current rolling window
+    await db.execute(`DELETE FROM agent_spending_log;`);
+
+    const dailyLimit = parseInt(process.env.AGENT_DAILY_LIMIT_SATS || "500", 10);
+    const baselineSpent = Math.max(0, dailyLimit - remainingAllowanceSats);
+    const nowSec = Math.floor(Date.now() / 1000);
+
+    if (baselineSpent > 0) {
+      await db.execute({
+        sql: `
+          INSERT INTO agent_spending_log (id, timestamp, amount_sats, recipient, rail, status, reason)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `,
+        args: [
+          `demo_prime_${Date.now()}`,
+          nowSec,
+          baselineSpent,
+          null,
+          "nutzap",
+          "approved",
+          "Simulated baseline spend for deterministic adaptive fallback demo",
+        ],
+      });
+    }
+
+    db.close();
+    console.log(
+      `${colors.dim}>>> [Guardrails Primed] Configured 24h budget: ${baselineSpent} spent / ${remainingAllowanceSats} sats remaining for demo.${colors.reset}\n`
+    );
+  } catch (err) {
+    console.debug("[Notice] Could not prime guardrails:", err);
+  }
+}
+
 async function main() {
   const transportMode = isNpm ? "NPM PACKAGE (npx -y nostrpulse-mcp)" : "LOCAL BUNDLE (dist/mcp-entry.js)";
   const engineMode = isOllama
@@ -503,6 +563,12 @@ async function main() {
   console.log(`  Transport: ${transportMode}`);
   console.log(`  Inference: ${engineMode}`);
   console.log("===============================================================================\n");
+
+  // Pre-condition spending guardrails to 6 sats remaining for deterministic demo
+  const shouldPrime = !process.argv.includes("--no-prime");
+  if (shouldPrime) {
+    await primeSpendingGuardrails(6);
+  }
 
   // Validate API credentials if using Google Gemini
   if (!isOllama) {

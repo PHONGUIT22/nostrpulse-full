@@ -60,8 +60,11 @@ export function getSpendingConfig(): SpendingGuardrailsConfig {
   const isEnabled = process.env.AGENT_GUARDRAILS_ENABLED !== "false" && process.env.AGENT_GUARDRAILS_ENABLED !== "0";
 
   return {
-    maxPerTxSats: parseEnvInt("AGENT_MAX_TX_SATS", 5000),
-    dailyBudgetSats: parseEnvInt("AGENT_DAILY_BUDGET_SATS", 25000),
+    maxPerTxSats: parseEnvInt("AGENT_MAX_SATS_PER_TX", parseEnvInt("AGENT_MAX_TX_SATS", 50)),
+    dailyBudgetSats: parseEnvInt(
+      "AGENT_DAILY_LIMIT_SATS",
+      parseEnvInt("AGENT_DAILY_BUDGET_SATS", 500)
+    ),
     minRecipientTrustScore: parseEnvInt("AGENT_MIN_RECIPIENT_TRUST_SCORE", 0),
     enabled: isEnabled,
   };
@@ -85,6 +88,14 @@ export function updateSpendingConfig(newConfig: Partial<SpendingGuardrailsConfig
  */
 export async function getDailySpentSats(): Promise<{ totalSats: number; count: number }> {
   const oneDayAgoSec = Math.floor(Date.now() / 1000) - 86400;
+
+  try {
+    const { getRolling24hApprovedSpend } = await import("./db");
+    const rollingSpent = await getRolling24hApprovedSpend(oneDayAgoSec);
+    if (rollingSpent > 0) {
+      return { totalSats: rollingSpent, count: 1 };
+    }
+  } catch {}
 
   try {
     const dbRecords = await getRecentSpendingRecords(oneDayAgoSec);
