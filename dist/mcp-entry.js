@@ -900,7 +900,7 @@ function isToolAllowed(name) {
 }
 var mcpServer = new McpServer({
   name: "nostrpulse-mcp-server",
-  version: "1.0.0"
+  version: "1.2.0"
 });
 if (isToolAllowed("check_trust_score")) {
   mcpServer.tool(
