@@ -1,0 +1,5 @@
+{
+  "$schema": "https://glama.ai/mcp/schema.json",
+  "name": "NostrPulseMCP",
+  "description": "The Decentralized Stripe & Radar for Autonomous AI Agents"
+}
