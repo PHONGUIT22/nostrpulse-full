@@ -68,6 +68,12 @@ async function runGuardrailsVerification() {
   // ---------------------------------------------------------------------------
   console.log(">>> [Test 2] Testing Transaction Within Budget (allowed: true)...");
   const fiatjafPubkey = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+  const currentSpendBase = await getRolling24hSpend();
+  updateSpendingPolicy({
+    maxSatsPerTx: 50,
+    dailyLimitSats: currentSpendBase + 500,
+    minTrustScoreTarget: 40,
+  });
   const validPayment = await assertSpendingAllowed({
     amountSats: 21,
     recipientPubkey: fiatjafPubkey,

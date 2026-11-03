@@ -90,6 +90,14 @@ export async function getDailySpentSats(): Promise<{ totalSats: number; count: n
   const oneDayAgoSec = Math.floor(Date.now() / 1000) - 86400;
 
   try {
+    const dbRecords = await getRecentSpendingRecords(oneDayAgoSec);
+    if (dbRecords && dbRecords.length > 0) {
+      const totalSats = dbRecords.reduce((sum, r) => sum + r.amount_sats, 0);
+      return { totalSats, count: dbRecords.length };
+    }
+  } catch {}
+
+  try {
     const { getRolling24hApprovedSpend } = await import("./db");
     const rollingSpent = await getRolling24hApprovedSpend(oneDayAgoSec);
     if (rollingSpent > 0) {
@@ -97,20 +105,10 @@ export async function getDailySpentSats(): Promise<{ totalSats: number; count: n
     }
   } catch {}
 
-  try {
-    const dbRecords = await getRecentSpendingRecords(oneDayAgoSec);
-    if (dbRecords && dbRecords.length > 0) {
-      const totalSats = dbRecords.reduce((sum, r) => sum + r.amount_sats, 0);
-      return { totalSats, count: dbRecords.length };
-    }
-  } catch {
-    // Fallback to in-memory ring buffer
-  }
-
   const oneDayAgoMs = Date.now() - 86400 * 1000;
   const validMemRecords = inMemorySpendingRecords.filter((r) => r.createdAt >= oneDayAgoMs);
-  const totalSats = validMemRecords.reduce((sum, r) => sum + r.amountSats, 0);
-  return { totalSats, count: validMemRecords.length };
+  const memTotalSats = validMemRecords.reduce((sum, r) => sum + r.amountSats, 0);
+  return { totalSats: memTotalSats, count: validMemRecords.length };
 }
 
 /**

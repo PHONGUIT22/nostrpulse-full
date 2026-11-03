@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 import {
   calculateTrustScore
-} from "./chunk-TEBCT7SR.js";
+} from "./chunk-6HQMFGYN.js";
 import {
-  getWebOfTrustDistance,
-  normalizePubkey
-} from "./chunk-RI52V5BR.js";
+  normalizePubkey,
+  resolveWebOfTrustDistance
+} from "./chunk-FKHUSJXZ.js";
 import {
   getCreatorFromDb,
   getRolling24hApprovedSpend,
@@ -47,7 +47,7 @@ async function resolveRecipientTrustScore(recipientHex) {
     }
   } catch {
   }
-  const wot = getWebOfTrustDistance(recipientHex);
+  const wot = await resolveWebOfTrustDistance(recipientHex, { timeoutMs: 2500 });
   const calculated = calculateTrustScore(
     { pubkey: recipientHex, npub: "", name: "" },
     void 0,

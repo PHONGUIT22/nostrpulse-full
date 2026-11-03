@@ -2,7 +2,7 @@
 import {
   getSpendingSummary,
   recordAgentSpending
-} from "./chunk-DRAZQJBA.js";
+} from "./chunk-L4YQZXTR.js";
 import {
   DEFAULT_CASHU_MINT,
   auditCashuMint,
@@ -10,25 +10,25 @@ import {
   parseCashuToken,
   routeCashuMint,
   sendCashuNutZap
-} from "./chunk-5ESBNA4V.js";
+} from "./chunk-4EGGGMVW.js";
 import {
   MAJOR_INDEXER_RELAYS,
   decodeBolt11AmountSats
-} from "./chunk-JTEXOGO4.js";
-import "./chunk-CDTDPUJF.js";
+} from "./chunk-SMEXXZNP.js";
+import "./chunk-O2IL2KZT.js";
 import {
   assertSpendingAllowed,
   getRolling24hSpend,
   getSpendingPolicy
-} from "./chunk-C3LOZ2XO.js";
+} from "./chunk-TOR67XZG.js";
 import {
   calculateTrustScore
-} from "./chunk-TEBCT7SR.js";
+} from "./chunk-6HQMFGYN.js";
 import {
   encodeNpub,
-  getWebOfTrustDistance,
-  normalizePubkey
-} from "./chunk-RI52V5BR.js";
+  normalizePubkey,
+  resolveWebOfTrustDistance
+} from "./chunk-FKHUSJXZ.js";
 import {
   getAgentTelemetrySummary,
   getTelemetryOverview,
@@ -269,9 +269,9 @@ globalToolRegistry.registerTool({
     required: ["invoice"]
   },
   execute: async (args) => {
-    const { assertSpendingAllowed: assertSpendingAllowed2 } = await import("./guardrails-FH5YXAGE.js");
+    const { assertSpendingAllowed: assertSpendingAllowed2 } = await import("./guardrails-OGVQP7U6.js");
     const { logAgentEvent: logAgentEvent2 } = await import("./telemetry-A6BRHBKS.js");
-    const { decodeBolt11AmountSats: decodeBolt11AmountSats2 } = await import("./indexer-DVTUBL7Z.js");
+    const { decodeBolt11AmountSats: decodeBolt11AmountSats2 } = await import("./indexer-7ILCYG4Z.js");
     const { payWithNWC: payWithNWC2 } = await import("./nwc-NCU3WSOP.js");
     const amountSats = args.amountMsat && args.amountMsat > 0 ? Math.round(args.amountMsat / 1e3) : decodeBolt11AmountSats2(args.invoice) || 1;
     const guardrail = await assertSpendingAllowed2({
@@ -334,7 +334,7 @@ globalToolRegistry.registerTool({
     required: ["mintUrl"]
   },
   execute: async (args) => {
-    const { auditCashuMint: auditCashuMint2 } = await import("./mint-mesh-XAYJB3MA.js");
+    const { auditCashuMint: auditCashuMint2 } = await import("./mint-mesh-FZNRP26O.js");
     return auditCashuMint2(args.mintUrl, args.forceRefresh);
   }
 });
@@ -359,7 +359,7 @@ globalToolRegistry.registerTool({
     }
   },
   execute: async (args) => {
-    const { routeCashuMint: routeCashuMint2 } = await import("./mint-mesh-XAYJB3MA.js");
+    const { routeCashuMint: routeCashuMint2 } = await import("./mint-mesh-FZNRP26O.js");
     return routeCashuMint2({
       amountSats: args.amountSats,
       preferredMint: args.preferredMint,
@@ -394,7 +394,7 @@ globalToolRegistry.registerTool({
     properties: {}
   },
   execute: async () => {
-    const { getSpendingSummary: getSpendingSummary2 } = await import("./spending-guardrails-OAOGWQW5.js");
+    const { getSpendingSummary: getSpendingSummary2 } = await import("./spending-guardrails-RF7MY3WQ.js");
     return getSpendingSummary2();
   }
 });
@@ -415,7 +415,7 @@ globalToolRegistry.registerTool({
     }
   },
   execute: async (args) => {
-    const { getSpendingPolicy: getSpendingPolicy2, getRolling24hSpend: getRolling24hSpend2 } = await import("./guardrails-FH5YXAGE.js");
+    const { getSpendingPolicy: getSpendingPolicy2, getRolling24hSpend: getRolling24hSpend2 } = await import("./guardrails-OGVQP7U6.js");
     const { getAgentTelemetrySummary: getAgentTelemetrySummary2, getTelemetryOverview: getTelemetryOverview2, queryTelemetryEvents: queryTelemetryEvents2 } = await import("./telemetry-A6BRHBKS.js");
     const hours = Number(args.timeframeHours) || 24;
     const limit = Number(args.limit) || 20;
@@ -934,7 +934,7 @@ if (isToolAllowed("check_trust_score")) {
           };
         }
         const npub = encodeNpub(hex);
-        const wotResult = getWebOfTrustDistance(hex);
+        const wotResult = await resolveWebOfTrustDistance(hex, { timeoutMs: 2500 });
         const [creatorDb, zapRow] = await Promise.all([
           getCreatorFromDb(hex),
           getZapTotalsFromDb(hex)

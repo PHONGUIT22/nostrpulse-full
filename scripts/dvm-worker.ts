@@ -66,7 +66,21 @@ async function startDvmWorker() {
   console.log("-------------------------------------------------------------------------------\n");
 
   const pool = new SimplePool();
+  const MAX_PROCESSED_JOBS = 5000;
   const processedJobs = new Set<string>();
+
+  /**
+   * Tracks processed DVM jobs with FIFO eviction (capped at 5,000) to prevent daemon memory leaks.
+   */
+  function markJobProcessed(jobId: string) {
+    if (processedJobs.size >= MAX_PROCESSED_JOBS) {
+      const oldest = processedJobs.values().next().value;
+      if (oldest !== undefined) {
+        processedJobs.delete(oldest);
+      }
+    }
+    processedJobs.add(jobId);
+  }
 
   // 1. Broadcast NIP-89 DVM Announcement (Kind 31990) with JSON Schema
   try {
@@ -156,7 +170,7 @@ async function startDvmWorker() {
       );
       if (!hasSupportedTag) return;
 
-      processedJobs.add(event.id);
+      markJobProcessed(event.id);
 
       const isAnalyticsJob = event.kind === 5300 || event.tags.some((t) => t[0] === "t" && t[1]?.toLowerCase() === "zap-analytics");
       const jobCategory = isAnalyticsJob ? "zap-analytics" : "trust-score";

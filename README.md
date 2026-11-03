@@ -26,6 +26,7 @@
 <p align="center">
   <a href="https://nostrpulse.vercel.app/"><b>Explore Live Explorer »</b></a> •
   <a href="https://nostrpulse.vercel.app/agent"><b>AI Agent Interface</b></a> •
+  <a href="docs/HRF_GRANT_ROADMAP.md"><b>HRF Grant Roadmap & Verification</b></a> •
   <a href="https://nostrpulse.vercel.app/bounties"><b>Bounty Board</b></a> •
   <a href="https://nostrpulse.vercel.app/about"><b>Methodology</b></a> •
   <a href="https://nostrpulse.vercel.app/relays"><b>Relay Telemetry</b></a> •
@@ -524,7 +525,7 @@ npx tsc --noEmit
 - [x] **Phase 9:** WoT-Gated Dynamic Mint Mesh & NUT-06 5-Pillar Counterparty Risk Radar.
 - [x] **Phase 10:** Agent Spending Guardrails (single-tx cap & 24h limits), Zero-Config Identity Bootstrapping & Developer Telemetry Data Layer.
 - [x] **Phase 11:** Autonomous Agent-to-Agent (A2A) Collaborative Mesh, SLM Profiles (`--profile=minimal`), and Adaptive Spending Fallback.
-- [ ] **Phase 12:** Standalone `@nostrpulse/sdk` for seamless integration into third-party Nostr clients.
+- [x] **Phase 12:** Standalone `@nostrpulse/sdk` with Zero-Buffer RFC 8949 CBOR, Dual Bundle Build, and Unified Test Suite Runner.
 
 ---
 

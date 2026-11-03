@@ -2,23 +2,35 @@ import { defineConfig } from "tsup";
 import fs from "fs";
 import path from "path";
 
-export default defineConfig({
-  entry: ["src/mcp-entry.ts"],
-  format: ["esm"],
-  target: "node20",
-  clean: true,
-  banner: {
-    js: "#!/usr/bin/env node",
+export default defineConfig([
+  {
+    entry: {
+      "mcp-entry": "src/mcp-entry.ts",
+    },
+    format: ["esm"],
+    target: "node20",
+    clean: true,
+    banner: {
+      js: "#!/usr/bin/env node",
+    },
+    outExtension() {
+      return { js: ".js" };
+    },
   },
-  outExtension() {
-    return {
-      js: ".js",
-    };
+  {
+    entry: {
+      "sdk/index": "src/sdk/index.ts",
+    },
+    format: ["esm"],
+    target: "node20",
+    outExtension() {
+      return { js: ".js" };
+    },
+    async onSuccess() {
+      fs.writeFileSync(
+        path.resolve(process.cwd(), "dist/package.json"),
+        JSON.stringify({ type: "module" }, null, 2)
+      );
+    },
   },
-  async onSuccess() {
-    fs.writeFileSync(
-      path.resolve(process.cwd(), "dist/package.json"),
-      JSON.stringify({ type: "module" }, null, 2)
-    );
-  },
-});
+]);

@@ -3,6 +3,16 @@
   "version": "1.2.0",
   "description": "Autonomous Payment & Sybil-Resistant Trust Layer for AI Agents via MCP",
   "main": "./dist/mcp-entry.js",
+  "exports": {
+    ".": {
+      "import": "./dist/mcp-entry.js",
+      "default": "./dist/mcp-entry.js"
+    },
+    "./sdk": {
+      "import": "./dist/sdk/index.js",
+      "default": "./dist/sdk/index.js"
+    }
+  },
   "bin": {
     "nostrpulse-mcp": "dist/mcp-entry.js"
   },
@@ -14,10 +24,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx scripts/run-all-tests.ts",
     "indexer": "tsx scripts/indexer-worker.ts",
     "enrich": "node src/scripts/enrich-creators.mjs",
     "mcp": "tsx src/mcp-entry.ts",
-    "build:mcp": "tsup src/mcp-entry.ts --format esm --target node20 --clean --banner.js \"#!/usr/bin/env node\"",
+    "build:mcp": "tsup",
     "agent": "tsx src/agent/cli.ts",
     "agent:llm": "tsx src/agent/cli.ts --mode=llm",
     "agent:local": "tsx src/agent/cli.ts --mode=local"

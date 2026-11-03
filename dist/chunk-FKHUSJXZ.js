@@ -70217,6 +70217,41 @@ function encodeNpub(hex) {
     return hex;
   }
 }
+async function queryReverseFollowers(targetPubkey, relays = ["wss://relay.primal.net", "wss://nos.lol", "wss://relay.damus.io"], timeoutMs = 3e3) {
+  const hex = normalizePubkey(targetPubkey);
+  if (!hex) return [];
+  const effectiveTimeout = Math.min(3e3, Math.max(500, timeoutMs));
+  const pool = new SimplePool();
+  try {
+    const timeoutPromise = new Promise(
+      (resolve) => setTimeout(() => resolve(null), effectiveTimeout)
+    );
+    const queryPromise = pool.querySync(
+      relays,
+      { kinds: [3], "#p": [hex], limit: 30 },
+      { maxWait: effectiveTimeout }
+    );
+    const events = await Promise.race([queryPromise, timeoutPromise]);
+    if (Array.isArray(events)) {
+      const authors = /* @__PURE__ */ new Set();
+      for (const ev of events) {
+        if (ev && ev.pubkey && /^[0-9a-fA-F]{64}$/.test(ev.pubkey)) {
+          authors.add(ev.pubkey.toLowerCase());
+        }
+      }
+      return Array.from(authors);
+    }
+    return [];
+  } catch (err) {
+    console.warn(`[WoT] queryReverseFollowers timeout/error for ${hex}:`, err);
+    return [];
+  } finally {
+    try {
+      pool.close(relays);
+    } catch {
+    }
+  }
+}
 function getWebOfTrustDistance(targetPubkey) {
   const hex = normalizePubkey(targetPubkey);
   if (!hex) {
@@ -70286,9 +70321,75 @@ function getWebOfTrustDistance(targetPubkey) {
     sybilRisk: "High"
   };
 }
+async function resolveWebOfTrustDistance(targetPubkey, options) {
+  const hex = normalizePubkey(targetPubkey);
+  if (!hex) {
+    return {
+      pubkey: targetPubkey || "",
+      npub: targetPubkey || "",
+      distance: 3,
+      isDirectAnchor: false,
+      rawScore: 0,
+      wotPoints: 0,
+      normalizedScore: 0,
+      endorsedByCount: 0,
+      endorsers: [],
+      ring1Endorsers: [],
+      sybilRisk: "High"
+    };
+  }
+  const fastResult = getWebOfTrustDistance(hex);
+  if (fastResult.distance === 0 || fastResult.distance === 1) {
+    return fastResult;
+  }
+  const followers = await queryReverseFollowers(
+    hex,
+    options?.relays,
+    options?.timeoutMs ?? 3e3
+  );
+  const ring1Followers = Array.from(
+    new Set(followers.filter((author) => isVerifiedRing1(author)))
+  );
+  if (ring1Followers.length >= 1) {
+    const scoreHop2 = Math.min(15, ring1Followers.length * 3);
+    const wotPoints = scoreHop2;
+    return {
+      pubkey: hex,
+      npub: encodeNpub(hex),
+      distance: 2,
+      isDirectAnchor: false,
+      rawScore: scoreHop2,
+      wotPoints,
+      normalizedScore: Math.round(wotPoints / 25 * 100),
+      endorsedByCount: ring1Followers.length,
+      endorsers: [],
+      ring1Endorsers: ring1Followers,
+      sybilRisk: "Moderate"
+    };
+  }
+  return {
+    pubkey: hex,
+    npub: encodeNpub(hex),
+    distance: 3,
+    isDirectAnchor: false,
+    rawScore: 0,
+    wotPoints: 0,
+    normalizedScore: 0,
+    endorsedByCount: 0,
+    endorsers: [],
+    ring1Endorsers: [],
+    sybilRisk: "High"
+  };
+}
+function isVerifiedRing1(targetPubkey) {
+  const hex = normalizePubkey(targetPubkey);
+  if (!hex) return false;
+  return RING1_LOOKUP_MAP.has(hex);
+}
 
 export {
   normalizePubkey,
   encodeNpub,
-  getWebOfTrustDistance
+  getWebOfTrustDistance,
+  resolveWebOfTrustDistance
 };

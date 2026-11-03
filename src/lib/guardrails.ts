@@ -12,7 +12,11 @@ import {
   getRolling24hApprovedSpend,
   getCreatorFromDb,
 } from "@/lib/db";
-import { normalizePubkey, getWebOfTrustDistance } from "@/lib/wot";
+import {
+  normalizePubkey,
+  getWebOfTrustDistance,
+  resolveWebOfTrustDistance,
+} from "@/lib/wot";
 import { calculateTrustScore } from "@/lib/trust-score";
 
 export interface SpendingPolicy {
@@ -88,8 +92,8 @@ export async function resolveRecipientTrustScore(recipientHex: string): Promise<
     }
   } catch {}
 
-  // 2. Compute using Web-of-Trust graph distance
-  const wot = getWebOfTrustDistance(recipientHex);
+  // 2. Compute using Web-of-Trust graph distance (with multi-relay Hop 2 resolution)
+  const wot = await resolveWebOfTrustDistance(recipientHex, { timeoutMs: 2500 });
   const calculated = calculateTrustScore(
     { pubkey: recipientHex, npub: "", name: "" },
     undefined,

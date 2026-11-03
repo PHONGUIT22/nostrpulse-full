@@ -18,7 +18,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
-import { normalizePubkey, encodeNpub, getWebOfTrustDistance } from "./lib/wot";
+import {
+  normalizePubkey,
+  encodeNpub,
+  getWebOfTrustDistance,
+  resolveWebOfTrustDistance,
+} from "./lib/wot";
 import { calculateTrustScore } from "./lib/trust-score";
 import {
   initDatabase,
@@ -186,8 +191,8 @@ if (isToolAllowed("check_trust_score")) {
 
       const npub = encodeNpub(hex);
 
-      // Query graph distance and database
-      const wotResult = getWebOfTrustDistance(hex);
+      // Query graph distance (with multi-relay Hop 2 resolution) and database
+      const wotResult = await resolveWebOfTrustDistance(hex, { timeoutMs: 2500 });
       const [creatorDb, zapRow] = await Promise.all([
         getCreatorFromDb(hex),
         getZapTotalsFromDb(hex),

@@ -47,7 +47,9 @@ nostrpulse.db*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-.VSCodeCounters
+
+# VSCode Counter
+.VSCodeCounter/
 
 # nostrpulse local cache & agent identity
-.nostrpulse/
+.nostrpulse/

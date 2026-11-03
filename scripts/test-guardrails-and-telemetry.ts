@@ -16,6 +16,7 @@ import {
   getSpendingSummary,
   updateSpendingConfig,
   resetInMemorySpending,
+  getDailySpentSats,
 } from "../src/lib/spending-guardrails";
 import {
   logTelemetryEvent,
@@ -71,9 +72,10 @@ async function runTests() {
   // ---------------------------------------------------------------------------
   console.log(">>> [2/3] Testing Agent Spending Guardrails & Budget Manager...");
   resetInMemorySpending();
+  const { totalSats: baseSpent } = await getDailySpentSats();
   updateSpendingConfig({
     maxPerTxSats: 2000,
-    dailyBudgetSats: 5000,
+    dailyBudgetSats: baseSpent + 5000,
     enabled: true,
   });
 
@@ -104,8 +106,9 @@ async function runTests() {
     memo: "Test payment 2",
   });
 
-  // Test 2c: Exceeding daily budget (1500 + 1500 = 3000 spent; budget is 5000; next 2500 should fail)
-  const check3 = await checkSpendingAllowed({ amountSats: 2500, rail: "lightning_nwc" });
+  // Test 2c: Exceeding daily budget (1500 + 1500 = 3000 spent; tighten budget to baseSpent + 3500; next 1000 should fail)
+  updateSpendingConfig({ dailyBudgetSats: baseSpent + 3500 });
+  const check3 = await checkSpendingAllowed({ amountSats: 1000, rail: "lightning_nwc" });
   if (check3.allowed) {
     throw new Error("Expected daily budget overrun to be blocked");
   }
@@ -120,8 +123,8 @@ async function runTests() {
   console.log(`      Max Single  : ${summary.maxPerTxSats} sats`);
   console.log(`      Total Tx 24h: ${summary.totalTransactions24h}`);
 
-  if (summary.currentDailySpentSats < 3000) {
-    throw new Error(`Summary recorded spending mismatch: expected >= 3000, got ${summary.currentDailySpentSats}`);
+  if (summary.currentDailySpentSats < baseSpent + 3000) {
+    throw new Error(`Summary recorded spending mismatch: expected >= ${baseSpent + 3000}, got ${summary.currentDailySpentSats}`);
   }
   console.log("  [+] Spending Guardrails verified successfully.\n");
 

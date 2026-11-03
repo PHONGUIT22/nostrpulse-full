@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 import {
+  isSafeExternalUrl,
   verifyNip05
-} from "./chunk-CDTDPUJF.js";
+} from "./chunk-O2IL2KZT.js";
 import {
   calculateTrustScore
-} from "./chunk-TEBCT7SR.js";
+} from "./chunk-6HQMFGYN.js";
 import {
   encodeNpub,
   getWebOfTrustDistance,
   normalizePubkey
-} from "./chunk-RI52V5BR.js";
+} from "./chunk-FKHUSJXZ.js";
 import {
   getCreatorFromDb,
   getZapTotalsFromDb
@@ -20,9 +21,450 @@ import {
 
 // src/lib/cashu.ts
 import { getDecodedToken, getEncodedToken, Wallet } from "@cashu/cashu-ts";
-import { finalizeEvent, generateSecretKey } from "nostr-tools/pure";
+import { finalizeEvent as finalizeEvent2, generateSecretKey as generateSecretKey2 } from "nostr-tools/pure";
 import { SimplePool } from "nostr-tools/pool";
-import { nip19, nip04, nip44 } from "nostr-tools";
+import { nip19, nip04, nip44 as nip442 } from "nostr-tools";
+
+// src/lib/cbor.ts
+var B64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+var B64URL_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+var B64_LOOKUP = new Int16Array(256).fill(-1);
+for (let i = 0; i < B64_CHARS.length; i++) {
+  B64_LOOKUP[B64_CHARS.charCodeAt(i)] = i;
+}
+B64_LOOKUP["-".charCodeAt(0)] = 62;
+B64_LOOKUP["_".charCodeAt(0)] = 63;
+function bytesToHex(bytes) {
+  let hex = "";
+  for (let i = 0; i < bytes.length; i++) {
+    hex += bytes[i].toString(16).padStart(2, "0");
+  }
+  return hex;
+}
+function hexToBytes(hex) {
+  const cleanHex = hex.trim();
+  if (cleanHex.length % 2 !== 0) {
+    throw new Error("Invalid hex string: length must be even");
+  }
+  const len = cleanHex.length / 2;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    const byte = parseInt(cleanHex.slice(i * 2, i * 2 + 2), 16);
+    if (Number.isNaN(byte)) {
+      throw new Error(`Invalid hex character at index ${i * 2}`);
+    }
+    bytes[i] = byte;
+  }
+  return bytes;
+}
+function base64UrlToBytes(str) {
+  let clean = "";
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i);
+    if (code === 61) break;
+    if (B64_LOOKUP[code] !== -1) {
+      clean += str[i];
+    }
+  }
+  const len = clean.length;
+  if (len === 0) return new Uint8Array(0);
+  const validChunks = Math.floor(len / 4);
+  const remainder = len % 4;
+  let byteLen = validChunks * 3;
+  if (remainder === 2) byteLen += 1;
+  else if (remainder === 3) byteLen += 2;
+  const bytes = new Uint8Array(byteLen);
+  let byteIdx = 0;
+  for (let i = 0; i < validChunks * 4; i += 4) {
+    const c1 = B64_LOOKUP[clean.charCodeAt(i)];
+    const c2 = B64_LOOKUP[clean.charCodeAt(i + 1)];
+    const c3 = B64_LOOKUP[clean.charCodeAt(i + 2)];
+    const c4 = B64_LOOKUP[clean.charCodeAt(i + 3)];
+    const triple = c1 << 18 | c2 << 12 | c3 << 6 | c4;
+    bytes[byteIdx++] = triple >> 16 & 255;
+    bytes[byteIdx++] = triple >> 8 & 255;
+    bytes[byteIdx++] = triple & 255;
+  }
+  if (remainder === 2) {
+    const c1 = B64_LOOKUP[clean.charCodeAt(len - 2)];
+    const c2 = B64_LOOKUP[clean.charCodeAt(len - 1)];
+    const pair = c1 << 18 | c2 << 12;
+    bytes[byteIdx++] = pair >> 16 & 255;
+  } else if (remainder === 3) {
+    const c1 = B64_LOOKUP[clean.charCodeAt(len - 3)];
+    const c2 = B64_LOOKUP[clean.charCodeAt(len - 2)];
+    const c3 = B64_LOOKUP[clean.charCodeAt(len - 1)];
+    const triple = c1 << 18 | c2 << 12 | c3 << 6;
+    bytes[byteIdx++] = triple >> 16 & 255;
+    bytes[byteIdx++] = triple >> 8 & 255;
+  }
+  return bytes;
+}
+function bytesToBase64Url(bytes) {
+  let result = "";
+  const len = bytes.length;
+  const chunkCount = Math.floor(len / 3);
+  for (let i = 0; i < chunkCount * 3; i += 3) {
+    const triple = bytes[i] << 16 | bytes[i + 1] << 8 | bytes[i + 2];
+    result += B64URL_CHARS[triple >> 18 & 63] + B64URL_CHARS[triple >> 12 & 63] + B64URL_CHARS[triple >> 6 & 63] + B64URL_CHARS[triple & 63];
+  }
+  const remainder = len % 3;
+  if (remainder === 1) {
+    const single = bytes[len - 1] << 16;
+    result += B64URL_CHARS[single >> 18 & 63] + B64URL_CHARS[single >> 12 & 63];
+  } else if (remainder === 2) {
+    const pair = bytes[len - 2] << 16 | bytes[len - 1] << 8;
+    result += B64URL_CHARS[pair >> 18 & 63] + B64URL_CHARS[pair >> 12 & 63] + B64URL_CHARS[pair >> 6 & 63];
+  }
+  return result;
+}
+function decodeCbor(bytes) {
+  if (!bytes || bytes.length === 0) {
+    throw new Error("Cannot decode empty CBOR bytes");
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let offset = 0;
+  function decodeItem() {
+    if (offset >= bytes.length) {
+      throw new Error("Unexpected end of CBOR data");
+    }
+    const initialByte = bytes[offset++];
+    const majorType = initialByte >> 5;
+    const additionalInfo = initialByte & 31;
+    let length = 0;
+    let bigLength = null;
+    if (additionalInfo < 24) {
+      length = additionalInfo;
+    } else if (additionalInfo === 24) {
+      if (offset >= bytes.length) throw new Error("Truncated CBOR single-byte length");
+      length = view.getUint8(offset++);
+    } else if (additionalInfo === 25) {
+      if (offset + 2 > bytes.length) throw new Error("Truncated CBOR 2-byte length");
+      length = view.getUint16(offset, false);
+      offset += 2;
+    } else if (additionalInfo === 26) {
+      if (offset + 4 > bytes.length) throw new Error("Truncated CBOR 4-byte length");
+      length = view.getUint32(offset, false);
+      offset += 4;
+    } else if (additionalInfo === 27) {
+      if (offset + 8 > bytes.length) throw new Error("Truncated CBOR 8-byte length");
+      if (majorType === 7) {
+        const floatVal = view.getFloat64(offset, false);
+        offset += 8;
+        return floatVal;
+      }
+      bigLength = view.getBigUint64(offset, false);
+      offset += 8;
+      if (bigLength <= BigInt(Number.MAX_SAFE_INTEGER)) {
+        length = Number(bigLength);
+      } else {
+        if (majorType === 0) return bigLength;
+        if (majorType === 1) return BigInt(-1) - bigLength;
+        length = Number(bigLength);
+      }
+    } else if (additionalInfo === 31) {
+      length = -1;
+    }
+    if (majorType === 0) {
+      return bigLength !== null && bigLength > BigInt(Number.MAX_SAFE_INTEGER) ? bigLength : length;
+    }
+    if (majorType === 1) {
+      return bigLength !== null && bigLength > BigInt(Number.MAX_SAFE_INTEGER) ? BigInt(-1) - bigLength : -1 - length;
+    }
+    if (majorType === 2) {
+      if (length < 0) throw new Error("Indefinite-length byte string not supported");
+      if (offset + length > bytes.length) throw new Error("Truncated CBOR byte string");
+      const slice = bytes.slice(offset, offset + length);
+      offset += length;
+      return slice;
+    }
+    if (majorType === 3) {
+      if (length < 0) throw new Error("Indefinite-length text string not supported");
+      if (offset + length > bytes.length) throw new Error("Truncated CBOR text string");
+      const strBytes = bytes.slice(offset, offset + length);
+      offset += length;
+      return new TextDecoder("utf-8").decode(strBytes);
+    }
+    if (majorType === 4) {
+      const arr = [];
+      if (length >= 0) {
+        for (let i = 0; i < length; i++) {
+          arr.push(decodeItem());
+        }
+      } else {
+        while (offset < bytes.length && bytes[offset] !== 255) {
+          arr.push(decodeItem());
+        }
+        if (offset < bytes.length && bytes[offset] === 255) {
+          offset++;
+        }
+      }
+      return arr;
+    }
+    if (majorType === 5) {
+      const obj = {};
+      if (length >= 0) {
+        for (let i = 0; i < length; i++) {
+          const key = decodeItem();
+          const val = decodeItem();
+          obj[typeof key === "string" ? key : String(key)] = val;
+        }
+      } else {
+        while (offset < bytes.length && bytes[offset] !== 255) {
+          const key = decodeItem();
+          const val = decodeItem();
+          obj[typeof key === "string" ? key : String(key)] = val;
+        }
+        if (offset < bytes.length && bytes[offset] === 255) {
+          offset++;
+        }
+      }
+      return obj;
+    }
+    if (majorType === 6) {
+      return decodeItem();
+    }
+    if (majorType === 7) {
+      if (additionalInfo === 20) return false;
+      if (additionalInfo === 21) return true;
+      if (additionalInfo === 22) return null;
+      if (additionalInfo === 23) return void 0;
+      if (additionalInfo === 25) {
+        const half = view.getUint16(offset, false);
+        offset += 2;
+        const sign = half & 32768 ? -1 : 1;
+        const exp = (half & 31744) >> 10;
+        const frac = half & 1023;
+        if (exp === 0) {
+          return sign * 2 ** -14 * (frac / 1024);
+        } else if (exp === 31) {
+          return frac ? NaN : sign * Infinity;
+        }
+        return sign * 2 ** (exp - 15) * (1 + frac / 1024);
+      }
+      if (additionalInfo === 26) {
+        const f32 = view.getFloat32(offset, false);
+        offset += 4;
+        return f32;
+      }
+    }
+    throw new Error(`Unsupported CBOR major type: ${majorType} (info: ${additionalInfo})`);
+  }
+  const result = decodeItem();
+  return result;
+}
+
+// src/lib/encryption.ts
+import { nip44 } from "nostr-tools";
+import { generateSecretKey, getPublicKey, finalizeEvent } from "nostr-tools/pure";
+var GIFT_WRAP_KIND = 1059;
+var SEALED_DIRECT_MESSAGE_KIND = 13;
+var PRIVATE_DIRECT_MESSAGE_KIND = 14;
+var NOTIFICATION_KIND = 21316;
+var TAG_PUBKEY = "p";
+var EncryptionManager = class {
+  constructor(config = {}) {
+    this.mode = config.mode ?? "optional" /* OPTIONAL */;
+  }
+  getEncryptionMode() {
+    return this.mode;
+  }
+  isEncryptionEnabled() {
+    return this.mode !== "disabled" /* DISABLED */;
+  }
+  isEncryptionRequired() {
+    return this.mode === "required" /* REQUIRED */;
+  }
+  /**
+   * Determines if we should encrypt outgoing messages based on incoming message format
+   * @param incomingWasEncrypted - Whether the incoming message was encrypted
+   */
+  shouldEncryptResponse(incomingWasEncrypted) {
+    switch (this.mode) {
+      case "disabled" /* DISABLED */:
+        return false;
+      case "required" /* REQUIRED */:
+        return true;
+      case "optional" /* OPTIONAL */:
+        return incomingWasEncrypted;
+      // Mirror the incoming format
+      default:
+        return false;
+    }
+  }
+  /**
+   * Determines if we should attempt encryption for outgoing requests (when no incoming context)
+   */
+  shouldAttemptEncryption() {
+    return this.mode === "required" /* REQUIRED */;
+  }
+  /**
+   * Encrypt a message using NIP-17/NIP-59 gift wrap scheme
+   * @param senderPrivateKey - Sender's private key in hex
+   * @param recipientPublicKey - Recipient's public key in hex
+   * @param eventTemplate - Event to encrypt
+   * @param options - Optional encryption options (e.g. jitterSeconds)
+   * @returns Gift wrapped event or null if encryption fails
+   */
+  async encryptMessage(senderPrivateKey, recipientPublicKey, eventTemplate, options) {
+    if (this.mode === "disabled" /* DISABLED */) {
+      return null;
+    }
+    try {
+      const now = Math.floor(Date.now() / 1e3);
+      const rumor = {
+        ...eventTemplate,
+        created_at: eventTemplate.created_at ?? now,
+        pubkey: getPublicKey(hexToBytes(senderPrivateKey))
+      };
+      const jitter = options?.jitterSeconds !== void 0 ? options.jitterSeconds : Math.floor(Math.random() * 172800);
+      const jitteredCreatedAt = Math.max(0, now - jitter);
+      const sealPrivateKey = generateSecretKey();
+      const sealPublicKey = getPublicKey(sealPrivateKey);
+      const encryptedRumor = nip44.v2.encrypt(
+        JSON.stringify(rumor),
+        nip44.v2.utils.getConversationKey(sealPrivateKey, recipientPublicKey)
+      );
+      const seal = {
+        kind: SEALED_DIRECT_MESSAGE_KIND,
+        content: encryptedRumor,
+        tags: [],
+        created_at: jitteredCreatedAt,
+        pubkey: sealPublicKey
+      };
+      const signedSeal = finalizeEvent(seal, sealPrivateKey);
+      const giftWrapPrivateKey = generateSecretKey();
+      const giftWrapPublicKey = getPublicKey(giftWrapPrivateKey);
+      const encryptedSeal = nip44.v2.encrypt(
+        JSON.stringify(signedSeal),
+        nip44.v2.utils.getConversationKey(
+          giftWrapPrivateKey,
+          recipientPublicKey
+        )
+      );
+      const giftWrap = {
+        kind: GIFT_WRAP_KIND,
+        content: encryptedSeal,
+        tags: [[TAG_PUBKEY, recipientPublicKey]],
+        created_at: jitteredCreatedAt,
+        pubkey: giftWrapPublicKey
+      };
+      return finalizeEvent(giftWrap, giftWrapPrivateKey);
+    } catch (error) {
+      console.error("Encryption failed:", error);
+      return null;
+    }
+  }
+  /**
+   * Decrypt a gift wrapped message and extract sender information
+   * @param event - Gift wrap event to decrypt
+   * @param recipientPrivateKey - Recipient's private key in hex
+   * @returns Decrypted message with sender info or null if decryption fails
+   */
+  async decryptMessage(event, recipientPrivateKey) {
+    if (!this.isEncryptionEnabled() || event.kind !== GIFT_WRAP_KIND) {
+      return null;
+    }
+    try {
+      const recipientPublicKey = getPublicKey(hexToBytes(recipientPrivateKey));
+      const isForUs = event.tags.some(
+        (tag) => tag[0] === TAG_PUBKEY && tag[1] === recipientPublicKey
+      );
+      if (!isForUs) {
+        return null;
+      }
+      const conversationKey = nip44.v2.utils.getConversationKey(
+        hexToBytes(recipientPrivateKey),
+        event.pubkey
+      );
+      const decryptedSealJson = nip44.v2.decrypt(
+        event.content,
+        conversationKey
+      );
+      const seal = JSON.parse(decryptedSealJson);
+      if (seal.kind !== SEALED_DIRECT_MESSAGE_KIND) {
+        console.error("Invalid seal kind:", seal.kind);
+        return null;
+      }
+      const sealConversationKey = nip44.v2.utils.getConversationKey(
+        hexToBytes(recipientPrivateKey),
+        seal.pubkey
+      );
+      const decryptedRumorJson = nip44.v2.decrypt(
+        seal.content,
+        sealConversationKey
+      );
+      const rumor = JSON.parse(decryptedRumorJson);
+      let actualContent;
+      if (rumor.kind === PRIVATE_DIRECT_MESSAGE_KIND) {
+        try {
+          actualContent = JSON.parse(rumor.content);
+        } catch {
+          actualContent = rumor.content;
+        }
+      } else {
+        actualContent = rumor;
+      }
+      return {
+        content: actualContent,
+        sender: rumor.pubkey,
+        event: {
+          ...rumor,
+          id: event.id,
+          // Keep original gift wrap ID for tracking
+          sig: event.sig
+        }
+      };
+    } catch (error) {
+      console.error("Decryption failed:", error);
+      return null;
+    }
+  }
+  /**
+   * Decrypt an event and extract sender information (unified method)
+   * Handles both gift wrapped and direct encrypted events
+   */
+  async decryptEventAndExtractSender(event, recipientPrivateKey) {
+    const decrypted = await this.decryptMessage(event, recipientPrivateKey);
+    if (!decrypted) {
+      return null;
+    }
+    return {
+      decryptedEvent: decrypted.event,
+      sender: decrypted.sender
+    };
+  }
+  /**
+   * Check if an event is encrypted for a specific recipient
+   */
+  isEventForRecipient(event, recipientPublicKey) {
+    if (event.kind !== GIFT_WRAP_KIND) {
+      return false;
+    }
+    return event.tags.some(
+      (tag) => tag[0] === TAG_PUBKEY && tag[1] === recipientPublicKey
+    );
+  }
+  /**
+   * Encrypt a notification event
+   */
+  async encryptNotification(senderPrivateKey, recipientPublicKey, notificationContent, tags = [], options) {
+    const eventTemplate = {
+      kind: NOTIFICATION_KIND,
+      content: notificationContent,
+      tags,
+      created_at: Math.floor(Date.now() / 1e3)
+    };
+    return this.encryptMessage(
+      senderPrivateKey,
+      recipientPublicKey,
+      eventTemplate,
+      options
+    );
+  }
+};
+
+// src/lib/cashu.ts
 var RECOMMENDED_MINTS = [
   {
     name: "Cashu Testnut (Demo / Test Sats)",
@@ -46,87 +488,6 @@ var RELAYS = [
   "wss://relay.primal.net",
   "wss://nos.lol"
 ];
-function bytesToHex(bytes) {
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-function base64UrlToBytes(base64Url) {
-  let base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-  while (base64.length % 4 !== 0) {
-    base64 += "=";
-  }
-  if (typeof window !== "undefined" && typeof atob === "function") {
-    const binStr = atob(base64);
-    const bytes = new Uint8Array(binStr.length);
-    for (let i = 0; i < binStr.length; i++) {
-      bytes[i] = binStr.charCodeAt(i);
-    }
-    return bytes;
-  }
-  return new Uint8Array(Buffer.from(base64, "base64"));
-}
-function decodeCbor(bytes) {
-  let offset = 0;
-  function decodeItem() {
-    if (offset >= bytes.length) {
-      throw new Error("Unexpected end of CBOR data");
-    }
-    const initialByte = bytes[offset++];
-    const majorType = initialByte >> 5;
-    const additionalInfo = initialByte & 31;
-    let length = 0;
-    if (additionalInfo < 24) {
-      length = additionalInfo;
-    } else if (additionalInfo === 24) {
-      length = bytes[offset++];
-    } else if (additionalInfo === 25) {
-      length = bytes[offset++] << 8 | bytes[offset++];
-    } else if (additionalInfo === 26) {
-      length = (bytes[offset++] << 24 | bytes[offset++] << 16 | bytes[offset++] << 8 | bytes[offset++]) >>> 0;
-    } else if (additionalInfo === 27) {
-      const hi = (bytes[offset++] << 24 | bytes[offset++] << 16 | bytes[offset++] << 8 | bytes[offset++]) >>> 0;
-      const lo = (bytes[offset++] << 24 | bytes[offset++] << 16 | bytes[offset++] << 8 | bytes[offset++]) >>> 0;
-      length = hi * 2 ** 32 + lo;
-    } else {
-      length = 0;
-    }
-    if (majorType === 0) return length;
-    if (majorType === 1) return -1 - length;
-    if (majorType === 2) {
-      const res = bytes.slice(offset, offset + length);
-      offset += length;
-      return res;
-    }
-    if (majorType === 3) {
-      const strBytes = bytes.slice(offset, offset + length);
-      offset += length;
-      return new TextDecoder("utf-8").decode(strBytes);
-    }
-    if (majorType === 4) {
-      const arr = [];
-      for (let i = 0; i < length; i++) {
-        arr.push(decodeItem());
-      }
-      return arr;
-    }
-    if (majorType === 5) {
-      const obj = {};
-      for (let i = 0; i < length; i++) {
-        const key = decodeItem();
-        const val = decodeItem();
-        obj[String(key)] = val;
-      }
-      return obj;
-    }
-    if (majorType === 7) {
-      if (additionalInfo === 20) return false;
-      if (additionalInfo === 21) return true;
-      if (additionalInfo === 22) return null;
-      return void 0;
-    }
-    return null;
-  }
-  return decodeItem();
-}
 function encodeCashuToken(mintUrl, proofs, unit = "sat") {
   const cleanMint = mintUrl.trim().replace(/\/+$/, "");
   try {
@@ -141,8 +502,9 @@ function encodeCashuToken(mintUrl, proofs, unit = "sat") {
     unit
   };
   const jsonStr = JSON.stringify(v3Payload);
-  const base64 = typeof window !== "undefined" ? btoa(unescape(encodeURIComponent(jsonStr))) : Buffer.from(jsonStr, "utf-8").toString("base64");
-  return `cashuA${base64.replace(/\+/g, "-").replace(/\//g, "_")}`;
+  const jsonBytes = new TextEncoder().encode(jsonStr);
+  const base64Url = bytesToBase64Url(jsonBytes);
+  return `cashuA${base64Url}`;
 }
 function decodeCashuString(tokenString) {
   const trimmed = tokenString.trim();
@@ -158,8 +520,9 @@ function decodeCashuString(tokenString) {
   }
   if (lower.startsWith("cashua")) {
     try {
-      const base64Data = trimmed.slice(6).replace(/-/g, "+").replace(/_/g, "/");
-      const jsonStr = typeof window !== "undefined" ? decodeURIComponent(escape(atob(base64Data))) : Buffer.from(base64Data, "base64").toString("utf-8");
+      const base64Data = trimmed.slice(6);
+      const jsonBytes = base64UrlToBytes(base64Data);
+      const jsonStr = new TextDecoder("utf-8").decode(jsonBytes);
       return JSON.parse(jsonStr);
     } catch (err) {
       throw new Error("Failed to parse cashuA base64 payload.");
@@ -258,6 +621,34 @@ function parseCashuToken(tokenString) {
     proofs
   };
 }
+var KeyedAsyncMutex = class {
+  constructor() {
+    this.queue = /* @__PURE__ */ new Map();
+  }
+  async runExclusive(key, fn) {
+    const currentPromise = this.queue.get(key) || Promise.resolve();
+    let release = () => {
+    };
+    const waitPromise = new Promise((resolve) => {
+      release = resolve;
+    });
+    const nextInQueue = currentPromise.then(
+      () => waitPromise,
+      () => waitPromise
+    );
+    this.queue.set(key, nextInQueue);
+    try {
+      await currentPromise;
+      return await fn();
+    } finally {
+      release();
+      if (this.queue.get(key) === nextInQueue) {
+        this.queue.delete(key);
+      }
+    }
+  }
+};
+var splitTokenMutex = new KeyedAsyncMutex();
 async function splitCashuToken(tokenString, amountToSend, overrideMintUrl) {
   const info = parseCashuToken(tokenString);
   if (info.totalAmountSats < amountToSend) {
@@ -272,55 +663,59 @@ async function splitCashuToken(tokenString, amountToSend, overrideMintUrl) {
   if (!cleanMint.startsWith("http://") && !cleanMint.startsWith("https://")) {
     cleanMint = `https://${cleanMint}`;
   }
-  console.log(`[splitCashuToken] Connecting to Mint: "${cleanMint}", Unit: "${normalizedUnit}"`);
-  const wallet = new Wallet(cleanMint, { unit: normalizedUnit });
-  await wallet.loadMint(true);
-  let mintKeysetIds = [];
-  try {
-    const res = await fetch(`${cleanMint}/v1/keysets`);
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data.keysets)) {
-        mintKeysetIds = data.keysets.map((k) => k.id);
+  const tokenProofKey = info.proofs.map((p) => p.secret || p.C).sort().join(":");
+  const lockKey = `${cleanMint.toLowerCase()}:${tokenProofKey || tokenString.trim()}`;
+  return splitTokenMutex.runExclusive(lockKey, async () => {
+    console.log(`[splitCashuToken] Connecting to Mint: "${cleanMint}", Unit: "${normalizedUnit}"`);
+    const wallet = new Wallet(cleanMint, { unit: normalizedUnit });
+    await wallet.loadMint(true);
+    let mintKeysetIds = [];
+    try {
+      const res = await fetch(`${cleanMint}/v1/keysets`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.keysets)) {
+          mintKeysetIds = data.keysets.map((k) => k.id);
+        }
       }
+    } catch (err) {
+      console.warn("[splitCashuToken] Could not fetch keysets directly, falling back to cache:", err);
+      mintKeysetIds = wallet.keyChain?.cache?.keysets?.map((k) => k.id) || [];
     }
-  } catch (err) {
-    console.warn("[splitCashuToken] Could not fetch keysets directly, falling back to cache:", err);
-    mintKeysetIds = wallet.keyChain?.cache?.keysets?.map((k) => k.id) || [];
-  }
-  console.log(`[splitCashuToken] Full Mint Keysets available:`, mintKeysetIds);
-  const normalizedProofs = info.proofs.map((proof) => {
-    const rawId = String(proof.id);
-    const fullMatch = mintKeysetIds.find((fullId) => fullId === rawId || fullId.startsWith(rawId));
-    if (fullMatch && fullMatch !== rawId) {
-      console.log(`[splitCashuToken] Auto-expanded truncated keyset: ${rawId} -> ${fullMatch}`);
-      return { ...proof, id: fullMatch };
+    console.log(`[splitCashuToken] Full Mint Keysets available:`, mintKeysetIds);
+    const normalizedProofs = info.proofs.map((proof) => {
+      const rawId = String(proof.id);
+      const fullMatch = mintKeysetIds.find((fullId) => fullId === rawId || fullId.startsWith(rawId));
+      if (fullMatch && fullMatch !== rawId) {
+        console.log(`[splitCashuToken] Auto-expanded truncated keyset: ${rawId} -> ${fullMatch}`);
+        return { ...proof, id: fullMatch };
+      }
+      return proof;
+    });
+    try {
+      if (typeof wallet.ensureOperableKeysets === "function") {
+        const keysetIds = Array.from(new Set(normalizedProofs.map((p) => p.id)));
+        await wallet.ensureOperableKeysets(keysetIds);
+      }
+      let sendResult;
+      if (wallet.ops && typeof wallet.ops.send === "function") {
+        sendResult = await wallet.ops.send(amountToSend, normalizedProofs).run();
+      } else {
+        sendResult = await wallet.send(amountToSend, normalizedProofs);
+      }
+      const returnChange = sendResult.keep || sendResult.returnChange;
+      const send = sendResult.send;
+      const sendToken = encodeCashuToken(cleanMint, send, normalizedUnit);
+      const changeToken = returnChange && returnChange.length > 0 ? encodeCashuToken(cleanMint, returnChange, normalizedUnit) : null;
+      return { sendToken, changeToken };
+    } catch (error) {
+      if (error.name === "UnknownKeysetError" || error.message && error.message.includes("not a keyset of this mint")) {
+        console.error(`[splitCashuToken] Keyset Error: Token does not belong to Mint ${cleanMint}`);
+        throw new Error(`Invalid eCash token or keyset does not belong to active Mint (${cleanMint}). Please check your token.`);
+      }
+      throw error;
     }
-    return proof;
   });
-  try {
-    if (typeof wallet.ensureOperableKeysets === "function") {
-      const keysetIds = Array.from(new Set(normalizedProofs.map((p) => p.id)));
-      await wallet.ensureOperableKeysets(keysetIds);
-    }
-    let sendResult;
-    if (wallet.ops && typeof wallet.ops.send === "function") {
-      sendResult = await wallet.ops.send(amountToSend, normalizedProofs).run();
-    } else {
-      sendResult = await wallet.send(amountToSend, normalizedProofs);
-    }
-    const returnChange = sendResult.keep || sendResult.returnChange;
-    const send = sendResult.send;
-    const sendToken = encodeCashuToken(cleanMint, send, normalizedUnit);
-    const changeToken = returnChange && returnChange.length > 0 ? encodeCashuToken(cleanMint, returnChange, normalizedUnit) : null;
-    return { sendToken, changeToken };
-  } catch (error) {
-    if (error.name === "UnknownKeysetError" || error.message && error.message.includes("not a keyset of this mint")) {
-      console.error(`[splitCashuToken] Keyset Error: Token does not belong to Mint ${cleanMint}`);
-      throw new Error(`Invalid eCash token or keyset does not belong to active Mint (${cleanMint}). Please check your token.`);
-    }
-    throw error;
-  }
 }
 async function createCashuMintQuote(amountSats, mintUrl = DEFAULT_CASHU_MINT) {
   const cleanMint = mintUrl.trim().replace(/\/+$/, "");
@@ -409,9 +804,9 @@ async function encryptCashuPayload(recipientHexPubkey, rawPayload, ephemeralSk) 
     }
   }
   try {
-    if (nip44 && nip44.v2) {
-      const conversationKey = nip44.v2.utils.getConversationKey(ephemeralSk, recipientHexPubkey);
-      const encrypted2 = nip44.v2.encrypt(rawPayload, conversationKey);
+    if (nip442 && nip442.v2) {
+      const conversationKey = nip442.v2.utils.getConversationKey(ephemeralSk, recipientHexPubkey);
+      const encrypted2 = nip442.v2.encrypt(rawPayload, conversationKey);
       return { encryptedContent: encrypted2, encryptionScheme: "nip44" };
     }
   } catch (err) {
@@ -425,7 +820,8 @@ async function sendCashuNutZap({
   cashuToken,
   amountSats,
   comment,
-  mintUrl
+  mintUrl,
+  giftWrap
 }) {
   let hexPubkey = recipientPubkey;
   if (hexPubkey.startsWith("npub1")) {
@@ -443,7 +839,7 @@ async function sendCashuNutZap({
   if (!cleanMint.startsWith("http://") && !cleanMint.startsWith("https://")) {
     cleanMint = `https://${cleanMint}`;
   }
-  const ephemeralSk = generateSecretKey();
+  const ephemeralSk = generateSecretKey2();
   const { sendToken, changeToken } = await splitCashuToken(cashuToken, amountSats, cleanMint);
   const secretNutZapPayload = JSON.stringify({
     token: sendToken.trim(),
@@ -478,14 +874,26 @@ async function sendCashuNutZap({
     }
   }
   if (!signedEvent) {
-    signedEvent = finalizeEvent(eventTemplate, ephemeralSk);
+    signedEvent = finalizeEvent2(eventTemplate, ephemeralSk);
   }
+  const shouldGiftWrap = giftWrap ?? process.env.NOSTRPULSE_GIFTWRAP_NUTZAP === "true";
+  let giftWrapEvent = null;
+  if (shouldGiftWrap) {
+    const encManager = new EncryptionManager({ mode: "required" /* REQUIRED */ });
+    const senderPrivHex = bytesToHex(ephemeralSk);
+    giftWrapEvent = await encManager.encryptMessage(senderPrivHex, hexPubkey, eventTemplate);
+  }
+  const broadcastEvent = shouldGiftWrap && giftWrapEvent ? giftWrapEvent : signedEvent;
   const pool = new SimplePool();
   try {
     const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 1500));
     const publishPromises = RELAYS.map(async (relayUrl) => {
       try {
-        const pub = pool.publish([relayUrl], signedEvent);
+        const pub = pool.publish([relayUrl], broadcastEvent);
+        if (pub && typeof pub.catch === "function") {
+          pub.catch(() => {
+          });
+        }
         await Promise.race([pub, timeoutPromise]);
       } catch (err) {
         console.debug(`[Cashu] Failed to publish NutZap to ${relayUrl}:`, err);
@@ -506,9 +914,12 @@ async function sendCashuNutZap({
   }
   return {
     signedEvent,
+    giftWrapEvent: giftWrapEvent || void 0,
     changeToken,
     id: signedEvent.id,
+    giftWrapId: giftWrapEvent ? giftWrapEvent.id : void 0,
     kind: signedEvent.kind,
+    wrappedKind: giftWrapEvent ? 1059 : void 0,
     ...signedEvent
   };
 }
@@ -520,8 +931,26 @@ var DEFAULT_MINT_MESH_URLS = [
   "https://mint.macadamia.cash",
   "https://legend.lnbits.com/cashu/api/v1/4gr9xm9YVgah95qcqzQgeh"
 ];
+var MAX_AUDIT_CACHE_ENTRIES = 200;
 var auditCache = /* @__PURE__ */ new Map();
 var AUDIT_CACHE_TTL_MS = 60 * 1e3;
+function setAuditCacheEntry(cleanUrl, entry) {
+  const now = Date.now();
+  for (const [key, val] of auditCache.entries()) {
+    if (val.expiresAt <= now) {
+      auditCache.delete(key);
+    }
+  }
+  while (auditCache.size >= MAX_AUDIT_CACHE_ENTRIES) {
+    const oldestKey = auditCache.keys().next().value;
+    if (oldestKey !== void 0) {
+      auditCache.delete(oldestKey);
+    } else {
+      break;
+    }
+  }
+  auditCache.set(cleanUrl, entry);
+}
 var KNOWN_MINT_OPERATORS = {
   "https://testnut.cashu.space": {
     pubkey: "140e4e08e6e5898867f5dbffec52eed1f92e394e432c2536c93437e584285b7b",
@@ -537,6 +966,9 @@ var KNOWN_MINT_OPERATORS = {
   }
 };
 async function fetchMintInfo(mintUrl, timeoutMs = 3500) {
+  if (!isSafeExternalUrl(mintUrl)) {
+    return { info: null, latencyMs: 0, isOnline: false };
+  }
   const cleanUrl = mintUrl.trim().replace(/\/+$/, "");
   const infoEndpoint = `${cleanUrl}/v1/info`;
   const startTime = Date.now();
@@ -640,6 +1072,9 @@ async function resolveNip05ToPubkey(nip05) {
     const parts = clean.split("@");
     if (parts.length !== 2) return null;
     const [name, domain] = parts;
+    if (!isSafeExternalUrl(`https://${domain}`)) {
+      return null;
+    }
     const res = await fetch(
       `https://${domain}/.well-known/nostr.json?name=${encodeURIComponent(name)}`,
       {
@@ -761,7 +1196,7 @@ async function auditCashuMint(mintUrl, forceRefresh = false) {
       ],
       auditedAt: Date.now()
     };
-    auditCache.set(cleanUrl, { result: offlineResult, expiresAt: Date.now() + 15e3 });
+    setAuditCacheEntry(cleanUrl, { result: offlineResult, expiresAt: Date.now() + 15e3 });
     return offlineResult;
   }
   const compliance = extractCompliance(info);
@@ -1014,7 +1449,7 @@ async function auditCashuMint(mintUrl, forceRefresh = false) {
     breakdown,
     auditedAt: Date.now()
   };
-  auditCache.set(cleanUrl, { result, expiresAt: Date.now() + AUDIT_CACHE_TTL_MS });
+  setAuditCacheEntry(cleanUrl, { result, expiresAt: Date.now() + AUDIT_CACHE_TTL_MS });
   return result;
 }
 async function selectBestMint(mintCandidates) {

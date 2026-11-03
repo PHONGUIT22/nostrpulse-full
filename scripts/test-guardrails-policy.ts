@@ -31,6 +31,14 @@ async function main() {
   }
   console.log("  [+] Default policy matches specifications.\n");
 
+  // Accommodate previous runs in persistent test DB to ensure test idempotence
+  const currentSpendBase = await getRolling24hSpend();
+  updateSpendingPolicy({
+    maxSatsPerTx: 50,
+    dailyLimitSats: currentSpendBase + 500,
+    minTrustScoreTarget: 40,
+  });
+
   // 2. Test Single Transaction Cap Check (amount > maxSatsPerTx)
   console.log(">>> [2/5] Testing Single Transaction Cap...");
   const fiatjafPubkey = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
@@ -75,14 +83,12 @@ async function main() {
 
   // 5. Test 24h Rolling Budget Accumulation and Limit Enforcement
   console.log(">>> [5/5] Testing 24h Rolling Budget Limit...");
-  // Temporarily set dailyLimitSats to 80 for this specific test
-  updateSpendingPolicy({ maxSatsPerTx: 50, dailyLimitSats: 80, minTrustScoreTarget: 40 });
-
-  // Currently spent: at least 25 sats
   const currentSpent = await getRolling24hSpend();
   console.log(`  [+] Current 24h approved spend in SQLite: ${currentSpent} sats`);
+  // Dynamically set dailyLimitSats relative to current spend
+  updateSpendingPolicy({ maxSatsPerTx: 50, dailyLimitSats: currentSpent + 60, minTrustScoreTarget: 40 });
 
-  // Send another 50 sats (total = currentSpent + 50)
+  // Send another 50 sats (total = currentSpent + 50 <= currentSpent + 60)
   const secondPayment = await assertSpendingAllowed({
     amountSats: 50,
     recipientPubkey: fiatjafPubkey,
@@ -90,7 +96,7 @@ async function main() {
   });
   console.log(`  [+] Second payment of 50 sats allowed: ${secondPayment.allowed}`);
 
-  // Now next payment of 30 sats should exceed the daily limit of 80 sats
+  // Now next payment of 30 sats should exceed the daily limit (currentSpent + 50 + 30 > currentSpent + 60)
   const overDaily = await assertSpendingAllowed({
     amountSats: 30,
     recipientPubkey: fiatjafPubkey,

@@ -11,18 +11,16 @@ import type {
 } from 'nostr-tools';
 import { nip44 } from 'nostr-tools';
 import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools/pure';
+import { hexToBytes, bytesToHex } from './cbor';
 
-// 1. Internal hexToBytes helper using standard Node/Bun Buffer
-const hexToBytes = (hex: string): Uint8Array => Uint8Array.from(Buffer.from(hex, 'hex'));
-
-// 2. Constants for NIP-59 / NIP-17 Gift Wrapping
+// 1. Constants for NIP-59 / NIP-17 Gift Wrapping
 export const GIFT_WRAP_KIND = 1059;
 export const SEALED_DIRECT_MESSAGE_KIND = 13;
 export const PRIVATE_DIRECT_MESSAGE_KIND = 14;
 export const NOTIFICATION_KIND = 21316;
 export const TAG_PUBKEY = 'p';
 
-// 3. Types and Enums
+// 2. Types and Enums
 export enum EncryptionMode {
   DISABLED = 'disabled',
   OPTIONAL = 'optional',
@@ -31,6 +29,10 @@ export enum EncryptionMode {
 
 export interface EncryptionConfig {
   mode?: EncryptionMode;
+}
+
+export interface EncryptOptions {
+  jitterSeconds?: number;
 }
 
 export interface DecryptedMessage {
@@ -90,23 +92,35 @@ export class EncryptionManager {
    * @param senderPrivateKey - Sender's private key in hex
    * @param recipientPublicKey - Recipient's public key in hex
    * @param eventTemplate - Event to encrypt
+   * @param options - Optional encryption options (e.g. jitterSeconds)
    * @returns Gift wrapped event or null if encryption fails
    */
   public async encryptMessage(
     senderPrivateKey: string,
     recipientPublicKey: string,
-    eventTemplate: EventTemplate
+    eventTemplate: EventTemplate,
+    options?: EncryptOptions
   ): Promise<NostrEvent | null> {
     if (this.mode === EncryptionMode.DISABLED) {
       return null;
     }
 
     try {
-      // Step 1: Create the rumor (original message without signature)
+      const now = Math.floor(Date.now() / 1000);
+
+      // Step 1: Create the rumor (original message without signature, preserving actual created_at)
       const rumor = {
         ...eventTemplate,
+        created_at: eventTemplate.created_at ?? now,
         pubkey: getPublicKey(hexToBytes(senderPrivateKey)),
       };
+
+      // NIP-59 timing correlation protection: randomize created_at of seal and gift wrap up to 48h (172800s) into the past
+      const jitter =
+        options?.jitterSeconds !== undefined
+          ? options.jitterSeconds
+          : Math.floor(Math.random() * 172800);
+      const jitteredCreatedAt = Math.max(0, now - jitter);
 
       // Step 2: Create seal (kind 13) - encrypt the rumor
       const sealPrivateKey = generateSecretKey();
@@ -121,7 +135,7 @@ export class EncryptionManager {
         kind: SEALED_DIRECT_MESSAGE_KIND,
         content: encryptedRumor,
         tags: [],
-        created_at: Math.floor(Date.now() / 1000),
+        created_at: jitteredCreatedAt,
         pubkey: sealPublicKey,
       };
 
@@ -143,7 +157,7 @@ export class EncryptionManager {
         kind: GIFT_WRAP_KIND,
         content: encryptedSeal,
         tags: [[TAG_PUBKEY, recipientPublicKey]],
-        created_at: Math.floor(Date.now() / 1000),
+        created_at: jitteredCreatedAt,
         pubkey: giftWrapPublicKey,
       };
 
@@ -280,7 +294,8 @@ export class EncryptionManager {
     senderPrivateKey: string,
     recipientPublicKey: string,
     notificationContent: string,
-    tags: string[][] = []
+    tags: string[][] = [],
+    options?: EncryptOptions
   ): Promise<NostrEvent | null> {
     const eventTemplate: EventTemplate = {
       kind: NOTIFICATION_KIND,
@@ -292,7 +307,8 @@ export class EncryptionManager {
     return this.encryptMessage(
       senderPrivateKey,
       recipientPublicKey,
-      eventTemplate
+      eventTemplate,
+      options
     );
   }
 }

@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import {
   verifyNip05
-} from "./chunk-CDTDPUJF.js";
+} from "./chunk-O2IL2KZT.js";
 import {
   calculateTrustScore
-} from "./chunk-TEBCT7SR.js";
+} from "./chunk-6HQMFGYN.js";
 import {
   accumulateZapTotals,
   getCreatorFromDb,

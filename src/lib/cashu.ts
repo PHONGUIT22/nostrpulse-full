@@ -3,6 +3,31 @@ import { getDecodedToken, getEncodedToken, Wallet } from "@cashu/cashu-ts";
 import { finalizeEvent, generateSecretKey } from "nostr-tools/pure";
 import { SimplePool } from "nostr-tools/pool";
 import { nip19, nip04, nip44 } from "nostr-tools";
+import {
+  bytesToHex,
+  hexToBytes,
+  base64UrlToBytes,
+  bytesToBase64Url,
+  bytesToBase64,
+  decodeCbor,
+  encodeCbor,
+} from "./cbor";
+import {
+  EncryptionManager,
+  EncryptionMode,
+  GIFT_WRAP_KIND,
+} from "./encryption";
+import { isSafeExternalUrl } from "./ssrf";
+
+export {
+  bytesToHex,
+  hexToBytes,
+  base64UrlToBytes,
+  bytesToBase64Url,
+  bytesToBase64,
+  decodeCbor,
+  encodeCbor,
+};
 
 export interface CashuMintOption {
   name: string;
@@ -59,139 +84,10 @@ export interface DecodedCashuInfo {
 }
 
 /**
- * Converts Uint8Array to a hex string (browser & Node.js safe)
- */
-function bytesToHex(bytes: Uint8Array | number[]): string {
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-/**
- * Converts Base64 / Base64URL string to Uint8Array
- */
-function base64UrlToBytes(base64Url: string): Uint8Array {
-  let base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-  while (base64.length % 4 !== 0) {
-    base64 += "=";
-  }
-  if (typeof window !== "undefined" && typeof atob === "function") {
-    const binStr = atob(base64);
-    const bytes = new Uint8Array(binStr.length);
-    for (let i = 0; i < binStr.length; i++) {
-      bytes[i] = binStr.charCodeAt(i);
-    }
-    return bytes;
-  }
-  return new Uint8Array(Buffer.from(base64, "base64"));
-}
-
-/**
- * Lightweight RFC 8949 CBOR decoder (supports error-free Cashu V4 cashuB token decoding)
- */
-function decodeCbor(bytes: Uint8Array): any {
-  let offset = 0;
-
-  function decodeItem(): any {
-    if (offset >= bytes.length) {
-      throw new Error("Unexpected end of CBOR data");
-    }
-
-    const initialByte = bytes[offset++];
-    const majorType = initialByte >> 5;
-    const additionalInfo = initialByte & 0x1f;
-
-    let length = 0;
-    if (additionalInfo < 24) {
-      length = additionalInfo;
-    } else if (additionalInfo === 24) {
-      length = bytes[offset++];
-    } else if (additionalInfo === 25) {
-      length = (bytes[offset++] << 8) | bytes[offset++];
-    } else if (additionalInfo === 26) {
-      length =
-        ((bytes[offset++] << 24) |
-          (bytes[offset++] << 16) |
-          (bytes[offset++] << 8) |
-          bytes[offset++]) >>> 0;
-    } else if (additionalInfo === 27) {
-      const hi =
-        ((bytes[offset++] << 24) |
-          (bytes[offset++] << 16) |
-          (bytes[offset++] << 8) |
-          bytes[offset++]) >>> 0;
-      const lo =
-        ((bytes[offset++] << 24) |
-          (bytes[offset++] << 16) |
-          (bytes[offset++] << 8) |
-          bytes[offset++]) >>> 0;
-      length = hi * 2 ** 32 + lo;
-    } else {
-      length = 0;
-    }
-
-    // Type 0: Unsigned Integer
-    if (majorType === 0) return length;
-    // Type 1: Negative Integer
-    if (majorType === 1) return -1 - length;
-
-    // Type 2: Byte String
-    if (majorType === 2) {
-      const res = bytes.slice(offset, offset + length);
-      offset += length;
-      return res;
-    }
-
-    // Type 3: UTF-8 Text String
-    if (majorType === 3) {
-      const strBytes = bytes.slice(offset, offset + length);
-      offset += length;
-      return new TextDecoder("utf-8").decode(strBytes);
-    }
-
-    // Type 4: Array
-    if (majorType === 4) {
-      const arr: any[] = [];
-      for (let i = 0; i < length; i++) {
-        arr.push(decodeItem());
-      }
-      return arr;
-    }
-
-    // Type 5: Map / Object
-    if (majorType === 5) {
-      const obj: Record<string, any> = {};
-      for (let i = 0; i < length; i++) {
-        const key = decodeItem();
-        const val = decodeItem();
-        obj[String(key)] = val;
-      }
-      return obj;
-    }
-
-    // Type 7: Simple values (true, false, null)
-    if (majorType === 7) {
-      if (additionalInfo === 20) return false;
-      if (additionalInfo === 21) return true;
-      if (additionalInfo === 22) return null;
-      return undefined;
-    }
-
-    return null;
-  }
-
-  return decodeItem();
-}
-
-/**
- * Validates that the Mint URL format is valid
+ * Validates that the Mint URL format is valid and safe against SSRF attacks
  */
 export function isValidMintUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url.trim());
-    return parsed.protocol === "https:" || parsed.protocol === "http:";
-  } catch (err) {
-    console.debug("[Cashu] Invalid mint URL string:", url, err);
-    return false;
-  }
+  return isSafeExternalUrl(url);
 }
 
 /**
@@ -213,11 +109,10 @@ export function encodeCashuToken(mintUrl: string, proofs: CashuProof[], unit = "
     unit,
   };
   const jsonStr = JSON.stringify(v3Payload);
-  const base64 = typeof window !== "undefined"
-    ? btoa(unescape(encodeURIComponent(jsonStr)))
-    : Buffer.from(jsonStr, "utf-8").toString("base64");
+  const jsonBytes = new TextEncoder().encode(jsonStr);
+  const base64Url = bytesToBase64Url(jsonBytes);
   
-  return `cashuA${base64.replace(/\+/g, "-").replace(/\//g, "_")}`;
+  return `cashuA${base64Url}`;
 }
 
 /**
@@ -241,11 +136,9 @@ function decodeCashuString(tokenString: string): any {
   // 2. Decode legacy cashuA token (V3 Base64 JSON format)
   if (lower.startsWith("cashua")) {
     try {
-      const base64Data = trimmed.slice(6).replace(/-/g, "+").replace(/_/g, "/");
-      const jsonStr =
-        typeof window !== "undefined"
-          ? decodeURIComponent(escape(atob(base64Data)))
-          : Buffer.from(base64Data, "base64").toString("utf-8");
+      const base64Data = trimmed.slice(6);
+      const jsonBytes = base64UrlToBytes(base64Data);
+      const jsonStr = new TextDecoder("utf-8").decode(jsonBytes);
       return JSON.parse(jsonStr);
     } catch (err) {
       throw new Error("Failed to parse cashuA base64 payload.");
@@ -367,6 +260,41 @@ export function parseCashuToken(tokenString: string): DecodedCashuInfo {
 }
 
 /**
+ * Asynchronous Keyed Mutex to serialize concurrent token split operations
+ * across identical mints/tokens, preventing double-spend race conditions ("Token already spent").
+ */
+export class KeyedAsyncMutex {
+  private queue = new Map<string, Promise<void>>();
+
+  async runExclusive<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const currentPromise = this.queue.get(key) || Promise.resolve();
+
+    let release: () => void = () => {};
+    const waitPromise = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const nextInQueue = currentPromise.then(
+      () => waitPromise,
+      () => waitPromise
+    );
+    this.queue.set(key, nextInQueue);
+
+    try {
+      await currentPromise;
+      return await fn();
+    } finally {
+      release();
+      if (this.queue.get(key) === nextInQueue) {
+        this.queue.delete(key);
+      }
+    }
+  }
+}
+
+export const splitTokenMutex = new KeyedAsyncMutex();
+
+/**
  * Splits Cashu token proofs into an exact send amount and change proofs to prevent overpaying.
  * Resolves truncated 16-hex Keyset ID prefixes (NUT-00 CBOR format) to full 66-hex Keyset IDs
  * against the target Mint before executing swap/send operations.
@@ -396,68 +324,74 @@ export async function splitCashuToken(
     cleanMint = `https://${cleanMint}`;
   }
 
-  console.log(`[splitCashuToken] Connecting to Mint: "${cleanMint}", Unit: "${normalizedUnit}"`);
+  // Key mutex by mint and token proofs identifier to serialize concurrent split calls
+  const tokenProofKey = info.proofs.map((p) => p.secret || p.C).sort().join(":");
+  const lockKey = `${cleanMint.toLowerCase()}:${tokenProofKey || tokenString.trim()}`;
 
-  const wallet = new Wallet(cleanMint, { unit: normalizedUnit });
-  await wallet.loadMint(true);
+  return splitTokenMutex.runExclusive(lockKey, async () => {
+    console.log(`[splitCashuToken] Connecting to Mint: "${cleanMint}", Unit: "${normalizedUnit}"`);
 
-  // 1. Fetch complete list of Keyset IDs from Mint
-  let mintKeysetIds: string[] = [];
-  try {
-    const res = await fetch(`${cleanMint}/v1/keysets`);
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data.keysets)) {
-        mintKeysetIds = data.keysets.map((k: any) => k.id);
+    const wallet = new Wallet(cleanMint, { unit: normalizedUnit });
+    await wallet.loadMint(true);
+
+    // 1. Fetch complete list of Keyset IDs from Mint
+    let mintKeysetIds: string[] = [];
+    try {
+      const res = await fetch(`${cleanMint}/v1/keysets`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.keysets)) {
+          mintKeysetIds = data.keysets.map((k: any) => k.id);
+        }
       }
+    } catch (err) {
+      console.warn("[splitCashuToken] Could not fetch keysets directly, falling back to cache:", err);
+      mintKeysetIds = (wallet as any).keyChain?.cache?.keysets?.map((k: any) => k.id) || [];
     }
-  } catch (err) {
-    console.warn("[splitCashuToken] Could not fetch keysets directly, falling back to cache:", err);
-    mintKeysetIds = (wallet as any).keyChain?.cache?.keysets?.map((k: any) => k.id) || [];
-  }
 
-  console.log(`[splitCashuToken] Full Mint Keysets available:`, mintKeysetIds);
+    console.log(`[splitCashuToken] Full Mint Keysets available:`, mintKeysetIds);
 
-  // 2. Auto-expand if proof.id is truncated to 16 hex chars (NUT-00 CBOR prefix)
-  const normalizedProofs = info.proofs.map((proof: any) => {
-    const rawId = String(proof.id);
-    const fullMatch = mintKeysetIds.find((fullId) => fullId === rawId || fullId.startsWith(rawId));
-    if (fullMatch && fullMatch !== rawId) {
-      console.log(`[splitCashuToken] Auto-expanded truncated keyset: ${rawId} -> ${fullMatch}`);
-      return { ...proof, id: fullMatch };
+    // 2. Auto-expand if proof.id is truncated to 16 hex chars (NUT-00 CBOR prefix)
+    const normalizedProofs = info.proofs.map((proof: any) => {
+      const rawId = String(proof.id);
+      const fullMatch = mintKeysetIds.find((fullId) => fullId === rawId || fullId.startsWith(rawId));
+      if (fullMatch && fullMatch !== rawId) {
+        console.log(`[splitCashuToken] Auto-expanded truncated keyset: ${rawId} -> ${fullMatch}`);
+        return { ...proof, id: fullMatch };
+      }
+      return proof;
+    });
+
+    try {
+      // 3. Ensure keyset has loaded keys
+      if (typeof (wallet as any).ensureOperableKeysets === "function") {
+        const keysetIds = Array.from(new Set(normalizedProofs.map((p: any) => p.id)));
+        await (wallet as any).ensureOperableKeysets(keysetIds);
+      }
+
+      let sendResult: any;
+      if ((wallet as any).ops && typeof (wallet as any).ops.send === "function") {
+        sendResult = await (wallet as any).ops.send(amountToSend, normalizedProofs).run();
+      } else {
+        sendResult = await wallet.send(amountToSend, normalizedProofs as any);
+      }
+
+      const returnChange = sendResult.keep || sendResult.returnChange;
+      const send = sendResult.send;
+      const sendToken = encodeCashuToken(cleanMint, send, normalizedUnit);
+      const changeToken = returnChange && returnChange.length > 0 
+        ? encodeCashuToken(cleanMint, returnChange, normalizedUnit) 
+        : null;
+
+      return { sendToken, changeToken };
+    } catch (error: any) {
+      if (error.name === "UnknownKeysetError" || (error.message && error.message.includes("not a keyset of this mint"))) {
+        console.error(`[splitCashuToken] Keyset Error: Token does not belong to Mint ${cleanMint}`);
+        throw new Error(`Invalid eCash token or keyset does not belong to active Mint (${cleanMint}). Please check your token.`);
+      }
+      throw error;
     }
-    return proof;
   });
-
-  try {
-    // 3. Ensure keyset has loaded keys
-    if (typeof (wallet as any).ensureOperableKeysets === "function") {
-      const keysetIds = Array.from(new Set(normalizedProofs.map((p: any) => p.id)));
-      await (wallet as any).ensureOperableKeysets(keysetIds);
-    }
-
-    let sendResult: any;
-    if ((wallet as any).ops && typeof (wallet as any).ops.send === "function") {
-      sendResult = await (wallet as any).ops.send(amountToSend, normalizedProofs).run();
-    } else {
-      sendResult = await wallet.send(amountToSend, normalizedProofs as any);
-    }
-
-    const returnChange = sendResult.keep || sendResult.returnChange;
-    const send = sendResult.send;
-    const sendToken = encodeCashuToken(cleanMint, send, normalizedUnit);
-    const changeToken = returnChange && returnChange.length > 0 
-      ? encodeCashuToken(cleanMint, returnChange, normalizedUnit) 
-      : null;
-
-    return { sendToken, changeToken };
-  } catch (error: any) {
-    if (error.name === "UnknownKeysetError" || (error.message && error.message.includes("not a keyset of this mint"))) {
-      console.error(`[splitCashuToken] Keyset Error: Token does not belong to Mint ${cleanMint}`);
-      throw new Error(`Invalid eCash token or keyset does not belong to active Mint (${cleanMint}). Please check your token.`);
-    }
-    throw error;
-  }
 }
 
 /**
@@ -687,7 +621,8 @@ async function encryptCashuPayload(
 }
 
 /**
- * Encrypts and publishes a NIP-61 NutZap (Kind 9321) eCash payment.
+ * Encrypts and publishes a NIP-61 NutZap (Kind 9321) eCash payment,
+ * with optional NIP-59 Gift Wrap metadata privacy envelope.
  */
 export async function sendCashuNutZap({
   recipientPubkey,
@@ -695,17 +630,22 @@ export async function sendCashuNutZap({
   amountSats,
   comment,
   mintUrl,
+  giftWrap,
 }: {
   recipientPubkey: string;
   cashuToken: string;
   amountSats: number;
   comment?: string;
   mintUrl: string;
+  giftWrap?: boolean;
 }): Promise<{
   signedEvent: any;
+  giftWrapEvent?: any;
   changeToken: string | null;
   id: string;
+  giftWrapId?: string;
   kind?: number;
+  wrappedKind?: number;
   [key: string]: any;
 }> {
   let hexPubkey = recipientPubkey;
@@ -772,13 +712,28 @@ export async function sendCashuNutZap({
     signedEvent = finalizeEvent(eventTemplate, ephemeralSk);
   }
 
+  // NIP-59 Gift Wrap envelope if requested or enabled via environment variable
+  const shouldGiftWrap = giftWrap ?? (process.env.NOSTRPULSE_GIFTWRAP_NUTZAP === "true");
+  let giftWrapEvent: any = null;
+
+  if (shouldGiftWrap) {
+    const encManager = new EncryptionManager({ mode: EncryptionMode.REQUIRED });
+    const senderPrivHex = bytesToHex(ephemeralSk);
+    giftWrapEvent = await encManager.encryptMessage(senderPrivHex, hexPubkey, eventTemplate);
+  }
+
+  const broadcastEvent = shouldGiftWrap && giftWrapEvent ? giftWrapEvent : signedEvent;
+
   const pool = new SimplePool();
   try {
     const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 1500));
 
     const publishPromises = RELAYS.map(async (relayUrl) => {
       try {
-        const pub = pool.publish([relayUrl], signedEvent);
+        const pub = pool.publish([relayUrl], broadcastEvent);
+        if (pub && typeof (pub as any).catch === "function") {
+          (pub as any).catch(() => {});
+        }
         await Promise.race([pub, timeoutPromise]);
       } catch (err) {
         console.debug(`[Cashu] Failed to publish NutZap to ${relayUrl}:`, err);
@@ -801,9 +756,113 @@ export async function sendCashuNutZap({
 
   return {
     signedEvent,
+    giftWrapEvent: giftWrapEvent || undefined,
     changeToken,
     id: signedEvent.id,
+    giftWrapId: giftWrapEvent ? giftWrapEvent.id : undefined,
     kind: signedEvent.kind,
+    wrappedKind: giftWrapEvent ? 1059 : undefined,
     ...signedEvent,
+  };
+}
+
+export interface UnwrappedNutZapResult {
+  token: string;
+  amount: number;
+  mint: string;
+  memo?: string;
+  senderPubkey: string;
+  rumorEvent: any;
+  giftWrapEvent?: any;
+}
+
+/**
+ * Decrypts a NIP-59 gift-wrapped NutZap (Kind 1059) or direct NutZap (Kind 9321)
+ * and extracts the inner Cashu eCash token and transaction details.
+ */
+export async function receiveAndUnwrapNutZap(
+  giftWrapOrNutZapEvent: any,
+  recipientPrivKeyHex: string
+): Promise<UnwrappedNutZapResult> {
+  if (!giftWrapOrNutZapEvent) {
+    throw new Error("Missing event to unwrap.");
+  }
+  if (!recipientPrivKeyHex) {
+    throw new Error("Missing recipient private key for decryption.");
+  }
+
+  let rumorEvent: any = null;
+  let senderPubkey = "";
+
+  // 1. If event is NIP-59 Gift Wrap (Kind 1059), unwrap the 3-layer envelope
+  if (giftWrapOrNutZapEvent.kind === GIFT_WRAP_KIND) {
+    const encManager = new EncryptionManager({ mode: EncryptionMode.REQUIRED });
+    const decrypted = await encManager.decryptMessage(giftWrapOrNutZapEvent, recipientPrivKeyHex);
+    if (!decrypted) {
+      throw new Error("Failed to decrypt NIP-59 gift wrap envelope.");
+    }
+    rumorEvent = decrypted.event;
+    senderPubkey = decrypted.sender;
+  } else if (giftWrapOrNutZapEvent.kind === 9321) {
+    rumorEvent = giftWrapOrNutZapEvent;
+    senderPubkey = giftWrapOrNutZapEvent.pubkey;
+  } else {
+    rumorEvent = giftWrapOrNutZapEvent;
+    senderPubkey = giftWrapOrNutZapEvent.pubkey || "";
+  }
+
+  if (!rumorEvent || !rumorEvent.content) {
+    throw new Error("Invalid NutZap event: missing content.");
+  }
+
+  // 2. Decrypt inner content payload of the Kind 9321 NutZap
+  let decryptedText = "";
+  try {
+    const recipientSkBytes = hexToBytes(recipientPrivKeyHex);
+    const senderPk = rumorEvent.pubkey || senderPubkey;
+    const conversationKey = (nip44 as any).v2.utils.getConversationKey(recipientSkBytes, senderPk);
+    decryptedText = (nip44 as any).v2.decrypt(rumorEvent.content, conversationKey);
+  } catch {
+    try {
+      const recipientSkBytes = hexToBytes(recipientPrivKeyHex);
+      decryptedText = await nip04.decrypt(recipientSkBytes, rumorEvent.pubkey || senderPubkey, rumorEvent.content);
+    } catch {
+      decryptedText = rumorEvent.content;
+    }
+  }
+
+  let payload: any = null;
+  try {
+    payload = JSON.parse(decryptedText);
+  } catch (jsonErr) {
+    throw new Error(`Failed to parse decrypted NutZap payload JSON: ${jsonErr}`);
+  }
+
+  const token = payload.token || payload.cashuToken || "";
+  if (!token) {
+    throw new Error("Decrypted NutZap payload does not contain a Cashu token.");
+  }
+
+  const tagAmountStr = rumorEvent.tags?.find((t: any) => t[0] === "amount")?.[1];
+  const tagMintStr = rumorEvent.tags?.find((t: any) => t[0] === "u")?.[1];
+
+  const amount =
+    typeof payload.amount === "number"
+      ? payload.amount
+      : tagAmountStr
+      ? Number(tagAmountStr) / 1000
+      : 0;
+
+  const mint = payload.mint || tagMintStr || DEFAULT_CASHU_MINT;
+  const memo = payload.memo || payload.comment || "";
+
+  return {
+    token,
+    amount,
+    mint,
+    memo,
+    senderPubkey,
+    rumorEvent,
+    giftWrapEvent: giftWrapOrNutZapEvent.kind === GIFT_WRAP_KIND ? giftWrapOrNutZapEvent : undefined,
   };
 }

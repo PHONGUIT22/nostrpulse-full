@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import {
   getWebOfTrustDistance
-} from "./chunk-RI52V5BR.js";
+} from "./chunk-FKHUSJXZ.js";
 
 // src/lib/economic-stake.ts
 import { SimplePool } from "nostr-tools/pool";

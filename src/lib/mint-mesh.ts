@@ -25,6 +25,7 @@ import {
 import { verifyNip05, type Nip05Result } from "@/lib/nip05";
 import { getCreatorFromDb, getZapTotalsFromDb } from "@/lib/db";
 import { RECOMMENDED_MINTS, DEFAULT_CASHU_MINT } from "@/lib/cashu";
+import { isSafeExternalUrl } from "@/lib/ssrf";
 
 export interface MintNutCompliance {
   nut04Mint: boolean;
@@ -107,9 +108,37 @@ export const DEFAULT_MINT_MESH_URLS = [
   "https://legend.lnbits.com/cashu/api/v1/4gr9xm9YVgah95qcqzQgeh",
 ];
 
-// In-memory cache for mint audits to prevent excessive probing (TTL: 60s)
+// In-memory cache for mint audits to prevent excessive probing (TTL: 60s, Max 200 entries)
+const MAX_AUDIT_CACHE_ENTRIES = 200;
 const auditCache = new Map<string, { result: MintAuditResult; expiresAt: number }>();
 const AUDIT_CACHE_TTL_MS = 60 * 1000;
+
+/**
+ * Saves audit result into in-memory cache with automatic eviction of expired entries
+ * and LRU/FIFO bound enforcement (max 200 items) to prevent daemon memory leaks.
+ */
+function setAuditCacheEntry(
+  cleanUrl: string,
+  entry: { result: MintAuditResult; expiresAt: number }
+) {
+  const now = Date.now();
+  // 1. Evict expired entries
+  for (const [key, val] of auditCache.entries()) {
+    if (val.expiresAt <= now) {
+      auditCache.delete(key);
+    }
+  }
+  // 2. Enforce max limit via FIFO eviction of oldest items
+  while (auditCache.size >= MAX_AUDIT_CACHE_ENTRIES) {
+    const oldestKey = auditCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      auditCache.delete(oldestKey);
+    } else {
+      break;
+    }
+  }
+  auditCache.set(cleanUrl, entry);
+}
 
 // Curated operator map for known ecosystem mints when contact is omitted in NUT-06
 const KNOWN_MINT_OPERATORS: Record<string, { pubkey: string; nip05?: string }> = {
@@ -138,6 +167,10 @@ async function fetchMintInfo(
   latencyMs: number;
   isOnline: boolean;
 }> {
+  if (!isSafeExternalUrl(mintUrl)) {
+    return { info: null, latencyMs: 0, isOnline: false };
+  }
+
   const cleanUrl = mintUrl.trim().replace(/\/+$/, "");
   const infoEndpoint = `${cleanUrl}/v1/info`;
   const startTime = Date.now();
@@ -263,6 +296,9 @@ async function resolveNip05ToPubkey(nip05: string): Promise<string | null> {
     const parts = clean.split("@");
     if (parts.length !== 2) return null;
     const [name, domain] = parts;
+    if (!isSafeExternalUrl(`https://${domain}`)) {
+      return null;
+    }
     const res = await fetch(
       `https://${domain}/.well-known/nostr.json?name=${encodeURIComponent(name)}`,
       {
@@ -410,7 +446,7 @@ export async function auditCashuMint(
       auditedAt: Date.now(),
     };
 
-    auditCache.set(cleanUrl, { result: offlineResult, expiresAt: Date.now() + 15000 });
+    setAuditCacheEntry(cleanUrl, { result: offlineResult, expiresAt: Date.now() + 15000 });
     return offlineResult;
   }
 
@@ -744,7 +780,7 @@ export async function auditCashuMint(
     auditedAt: Date.now(),
   };
 
-  auditCache.set(cleanUrl, { result, expiresAt: Date.now() + AUDIT_CACHE_TTL_MS });
+  setAuditCacheEntry(cleanUrl, { result, expiresAt: Date.now() + AUDIT_CACHE_TTL_MS });
   return result;
 }
 

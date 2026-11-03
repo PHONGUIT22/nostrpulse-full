@@ -1,4 +1,5 @@
 // src/lib/nip05.ts
+import { isSafeExternalUrl } from "./ssrf";
 
 export interface Nip05Result {
   isVerified: boolean;
@@ -31,6 +32,17 @@ export async function verifyNip05(
   }
 
   const [name, domain] = parts;
+
+  // SSRF Protection: Block private network and loopback domains
+  if (!isSafeExternalUrl(`https://${domain}`)) {
+    return {
+      isVerified: false,
+      nip05: clean,
+      domain,
+      name,
+      error: "Blocked private or unsafe domain",
+    };
+  }
 
   try {
     const url = `https://${domain}/.well-known/nostr.json?name=${encodeURIComponent(name)}`;
