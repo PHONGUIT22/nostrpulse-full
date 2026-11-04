@@ -5,8 +5,10 @@
 **Autonomous Payment & Sybil-Resistant Trust Layer for AI Agents via Nostr, Cashu eCash (NIP-61), and MCP.**
 
 [![npm version](https://img.shields.io/npm/v/nostrpulse-mcp?style=for-the-badge&color=CB3837&logo=npm)](https://www.npmjs.com/package/nostrpulse-mcp)
-[![Release: v1.2.0](https://img.shields.io/badge/Release-v1.2.0-2563EB?style=for-the-badge&logo=github)](https://github.com/PHONGUIT22/nostrpulse-full/releases)
+[![Release: v1.3.0](https://img.shields.io/badge/Release-v1.3.0-2563EB?style=for-the-badge&logo=github)](https://github.com/PHONGUIT22/nostrpulse-full/releases)
 [![MCP Stdio](https://img.shields.io/badge/MCP-Stdio_Protocol-009688?style=for-the-badge)](https://modelcontextprotocol.io)
+[![Listed on awesome-remote-mcp-servers](https://img.shields.io/badge/Listed_on-awesome--remote--mcp--servers-2563EB?style=for-the-badge&logo=github)](https://github.com/Appnova-EU-OU/awesome-remote-mcp-servers)
+[![FreeMCP Registry](https://img.shields.io/badge/FreeMCP-Verified_Server-009688?style=for-the-badge&logo=fastapi)](https://freemcp.space/np79857/nostrpulse-full)
 [![License: MIT](https://img.shields.io/badge/License-MIT-9333EA?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![Track](https://img.shields.io/badge/Track_2-Freedom_Stack-F7931A?style=for-the-badge&logo=bitcoin&logoColor=white)](https://bitshala.org)
 [![Nostr Protocol](https://img.shields.io/badge/Nostr-NIP--47_NWC_Lightning-8A2BE2?style=for-the-badge&logo=nostr)](https://github.com/nostr-protocol/nips/blob/master/47.md)
