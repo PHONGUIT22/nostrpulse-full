@@ -2,7 +2,7 @@
 import {
   getSpendingSummary,
   recordAgentSpending
-} from "./chunk-L4YQZXTR.js";
+} from "./chunk-DWHF6RI7.js";
 import {
   DEFAULT_CASHU_MINT,
   auditCashuMint,
@@ -394,7 +394,7 @@ globalToolRegistry.registerTool({
     properties: {}
   },
   execute: async () => {
-    const { getSpendingSummary: getSpendingSummary2 } = await import("./spending-guardrails-RF7MY3WQ.js");
+    const { getSpendingSummary: getSpendingSummary2 } = await import("./spending-guardrails-OITOT5Q6.js");
     return getSpendingSummary2();
   }
 });

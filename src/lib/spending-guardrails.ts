@@ -88,12 +88,16 @@ export function updateSpendingConfig(newConfig: Partial<SpendingGuardrailsConfig
  */
 export async function getDailySpentSats(): Promise<{ totalSats: number; count: number }> {
   const oneDayAgoSec = Math.floor(Date.now() / 1000) - 86400;
+  let dbTotalSats = 0;
+  let dbCount = 0;
+  let hasDbData = false;
 
   try {
     const dbRecords = await getRecentSpendingRecords(oneDayAgoSec);
     if (dbRecords && dbRecords.length > 0) {
-      const totalSats = dbRecords.reduce((sum, r) => sum + r.amount_sats, 0);
-      return { totalSats, count: dbRecords.length };
+      dbTotalSats += dbRecords.reduce((sum, r) => sum + r.amount_sats, 0);
+      dbCount += dbRecords.length;
+      hasDbData = true;
     }
   } catch {}
 
@@ -101,9 +105,15 @@ export async function getDailySpentSats(): Promise<{ totalSats: number; count: n
     const { getRolling24hApprovedSpend } = await import("./db");
     const rollingSpent = await getRolling24hApprovedSpend(oneDayAgoSec);
     if (rollingSpent > 0) {
-      return { totalSats: rollingSpent, count: 1 };
+      dbTotalSats += rollingSpent;
+      if (dbCount === 0) dbCount = 1;
+      hasDbData = true;
     }
   } catch {}
+
+  if (hasDbData) {
+    return { totalSats: dbTotalSats, count: dbCount };
+  }
 
   const oneDayAgoMs = Date.now() - 86400 * 1000;
   const validMemRecords = inMemorySpendingRecords.filter((r) => r.createdAt >= oneDayAgoMs);
