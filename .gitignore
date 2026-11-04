@@ -53,3 +53,8 @@ next-env.d.ts
 
 # nostrpulse local cache & agent identity
 .nostrpulse/
+
+# MCP publisher CLI binary
+mcp-publisher.exe
+mcp-publisher
+
