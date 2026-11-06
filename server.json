@@ -3,7 +3,7 @@
   "name": "io.github.PHONGUIT22/nostrpulse",
   "title": "NostrPulse",
   "description": "Autonomous payment & Web-of-Trust anti-Sybil layer for AI agents via Nostr & Cashu (NIP-61 NutZaps).",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "repository": {
     "url": "https://github.com/PHONGUIT22/nostrpulse-full.git",
     "source": "github"
@@ -12,7 +12,7 @@
     {
       "registryType": "npm",
       "identifier": "nostrpulse-mcp",
-      "version": "1.3.1",
+      "version": "1.3.2",
       "transport": {
         "type": "stdio"
       }
