@@ -488,4 +488,39 @@ globalToolRegistry.registerTool({
   },
 });
 
+globalToolRegistry.registerTool({
+  name: "get_agent_wallet_balance",
+  description:
+    "Check the autonomous AI agent's eCash wallet balance across all Cashu mints.",
+  inputSchema: {
+    type: "object",
+    properties: {},
+  },
+  execute: async () => {
+    const { getAgentWalletBalance } = await import("./wallet-vault");
+    return getAgentWalletBalance();
+  },
+});
+
+globalToolRegistry.registerTool({
+  name: "deposit_agent_wallet",
+  description:
+    "Deposit a Cashu eCash token into the autonomous AI agent's stateful local vault.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      cashuToken: {
+        type: "string",
+        description: "Cashu eCash token string to deposit (e.g. cashuA... or cashuB...)",
+      },
+    },
+    required: ["cashuToken"],
+  },
+  execute: async (args: Record<string, any>) => {
+    const { depositCashuToken } = await import("./wallet-vault");
+    return depositCashuToken(args.cashuToken);
+  },
+});
+
+
 

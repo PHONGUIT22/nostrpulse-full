@@ -49,6 +49,11 @@ const TEST_SUITES: TestSuite[] = [
     file: "scripts/test-security-enhancements.ts",
     description: "SSRF protection, AsyncMutex & Hop-2 WoT resolution",
   },
+  {
+    name: "Stateful Cashu Agent Vault",
+    file: "scripts/test-stateful-agent-wallet.ts",
+    description: "Multi-mint vault balance, proof splits & overdraw guards",
+  },
 ];
 
 interface TestResult {

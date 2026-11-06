@@ -187,3 +187,14 @@ export type {
   AgentIdentity,
   StoredIdentityFile,
 } from "../lib/identity-manager";
+
+// =============================================================================
+// 8. Stateful Cashu Agent Vault & Multi-Mint Balance Management
+// =============================================================================
+export {
+  depositCashuToken,
+  getAgentWalletBalance,
+  withdrawOrSplitProofsForPayment,
+  vaultMutex,
+} from "../lib/wallet-vault";
+

@@ -2,6 +2,8 @@
 import { createClient, Client } from "@libsql/client";
 import path from "path";
 import seedCreators from "./creators.json";
+import type { CashuProof } from "./cashu";
+export type { CashuProof };
 
 export interface CreatorRow {
   pubkey: string;
@@ -162,7 +164,22 @@ export async function initDatabase(): Promise<void> {
       );
     `);
 
-    // 8. Create helpful indexes
+    // 8. Create cashu_vault_proofs table (Stateful Cashu Agent Vault)
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS cashu_vault_proofs (
+        id TEXT PRIMARY KEY,
+        keyset_id TEXT NOT NULL,
+        amount INTEGER NOT NULL,
+        secret TEXT NOT NULL,
+        c TEXT NOT NULL,
+        mint_url TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'unspent',
+        created_at INTEGER NOT NULL,
+        spent_at INTEGER
+      );
+    `);
+
+    // 9. Create helpful indexes
     await db.execute(`CREATE INDEX IF NOT EXISTS idx_creators_npub ON creators(npub);`);
     await db.execute(`CREATE INDEX IF NOT EXISTS idx_creators_score ON creators(trust_score DESC);`);
     await db.execute(`CREATE INDEX IF NOT EXISTS idx_creators_synced ON creators(last_synced DESC);`);
@@ -179,6 +196,7 @@ export async function initDatabase(): Promise<void> {
     await db.execute(`CREATE INDEX IF NOT EXISTS idx_spending_log_recipient ON agent_spending_log(recipient);`);
     await db.execute(`CREATE INDEX IF NOT EXISTS idx_agent_telemetry_timestamp ON agent_telemetry(timestamp DESC);`);
     await db.execute(`CREATE INDEX IF NOT EXISTS idx_agent_telemetry_type ON agent_telemetry(type);`);
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_vault_mint_status ON cashu_vault_proofs(mint_url, status);`);
 
     // 9. Seed initial 26 creators if empty
     const countRes = await db.execute("SELECT COUNT(*) as count FROM creators");
@@ -892,6 +910,129 @@ export async function getAgentTelemetryRecords(
     amount_sats: Number(r.amount_sats || 0),
   }));
 }
+
+// =============================================================================
+// Stateful Cashu Agent Vault Queries & Proof Storage
+// =============================================================================
+
+/**
+ * Inserts Cashu proofs into the agent's stateful local vault.
+ */
+export async function insertVaultProofs(mintUrl: string, proofs: CashuProof[]): Promise<void> {
+  if (!proofs || proofs.length === 0) return;
+  await initDatabase();
+  const db = getDb();
+  const cleanMint = mintUrl.trim().replace(/\/+$/, "");
+  const now = Math.floor(Date.now() / 1000);
+
+  for (const proof of proofs) {
+    const proofId = proof.secret || proof.C;
+    await db.execute({
+      sql: `
+        INSERT OR REPLACE INTO cashu_vault_proofs (
+          id, keyset_id, amount, secret, c, mint_url, status, created_at, spent_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'unspent', ?, NULL)
+      `,
+      args: [
+        proofId,
+        proof.id,
+        proof.amount,
+        proof.secret,
+        proof.C,
+        cleanMint,
+        now,
+      ],
+    });
+  }
+}
+
+/**
+ * Retrieves unspent proofs from the vault, optionally filtered by mint URL.
+ */
+export async function getUnspentVaultProofs(mintUrl?: string): Promise<CashuProof[]> {
+  await initDatabase();
+  const db = getDb();
+  let sql = `SELECT * FROM cashu_vault_proofs WHERE status = 'unspent'`;
+  const args: any[] = [];
+
+  if (mintUrl) {
+    const cleanMint = mintUrl.trim().replace(/\/+$/, "");
+    sql += ` AND mint_url = ?`;
+    args.push(cleanMint);
+  }
+
+  sql += ` ORDER BY amount ASC`;
+  const res = await db.execute({ sql, args });
+
+  return res.rows.map((r: any) => ({
+    id: String(r.keyset_id),
+    amount: Number(r.amount),
+    secret: String(r.secret),
+    C: String(r.c),
+  }));
+}
+
+/**
+ * Marks given proof secrets (or IDs) as spent in the vault.
+ */
+export async function markVaultProofsSpent(secrets: string[]): Promise<void> {
+  if (!secrets || secrets.length === 0) return;
+  await initDatabase();
+  const db = getDb();
+  const now = Math.floor(Date.now() / 1000);
+
+  for (const secret of secrets) {
+    await db.execute({
+      sql: `UPDATE cashu_vault_proofs SET status = 'spent', spent_at = ? WHERE secret = ? OR id = ?`,
+      args: [now, secret, secret],
+    });
+  }
+}
+
+/**
+ * Computes a balance summary of the agent's vault across all active mints.
+ */
+export async function getVaultBalanceSummary(): Promise<{
+  totalBalanceSats: number;
+  mints: Array<{ mintUrl: string; balanceSats: number; count: number }>;
+}> {
+  await initDatabase();
+  const db = getDb();
+
+  const res = await db.execute(`
+    SELECT mint_url, SUM(amount) as balance_sats, COUNT(*) as proof_count
+    FROM cashu_vault_proofs
+    WHERE status = 'unspent'
+    GROUP BY mint_url
+    ORDER BY balance_sats DESC
+  `);
+
+  let totalBalanceSats = 0;
+  const mints = res.rows.map((r: any) => {
+    const balanceSats = Number(r.balance_sats || 0);
+    totalBalanceSats += balanceSats;
+    return {
+      mintUrl: String(r.mint_url),
+      balanceSats,
+      count: Number(r.proof_count || 0),
+    };
+  });
+
+  return {
+    totalBalanceSats,
+    mints,
+  };
+}
+
+/**
+ * Clears all proofs from the vault (primarily for tests).
+ */
+export async function clearVaultProofs(): Promise<void> {
+  await initDatabase();
+  const db = getDb();
+  await db.execute("DELETE FROM cashu_vault_proofs");
+}
+
 
 
 

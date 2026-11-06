@@ -5,7 +5,7 @@ import {
   getTelemetryStatsFromDb,
   insertAgentTelemetry,
   insertTelemetryEvent
-} from "./chunk-JHYB5MLN.js";
+} from "./chunk-GEF4V2OT.js";
 import {
   getAgentPubkey
 } from "./chunk-OZL5FZ3S.js";

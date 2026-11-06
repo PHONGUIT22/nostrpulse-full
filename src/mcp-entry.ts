@@ -37,7 +37,13 @@ import {
   createCashuMintQuote,
   DEFAULT_CASHU_MINT,
   parseCashuToken,
+  encodeCashuToken,
 } from "./lib/cashu";
+import {
+  depositCashuToken,
+  getAgentWalletBalance,
+  withdrawOrSplitProofsForPayment,
+} from "./lib/wallet-vault";
 import { requestDvmAnalyticsWithFallback } from "./lib/dvm";
 import { globalToolRegistry } from "./lib/tool-registry";
 import { payWithNWC } from "./lib/nwc";
@@ -99,6 +105,8 @@ export const PROFILE_TOOLS: Record<McpProfile, string[]> = {
     "get_agent_identity",
     "get_spending_guardrails",
     "get_agent_telemetry",
+    "get_agent_wallet_balance",
+    "deposit_agent_wallet",
   ],
 };
 
@@ -478,7 +486,104 @@ if (isToolAllowed("pay_cashu_nutzap")) {
         };
       }
 
-      // Case B: No token provided -> Request Lightning Mint Quote
+      // Case B: No token provided -> Check Stateful Cashu Agent Vault first!
+      const walletBalance = await getAgentWalletBalance();
+      if (walletBalance.totalBalanceSats >= amountSats) {
+        try {
+          const { sendProofs, mintUrl: vaultMint } = await withdrawOrSplitProofsForPayment(
+            amountSats,
+            cleanMint
+          );
+
+          const tokenFromVault = encodeCashuToken(vaultMint, sendProofs);
+
+          const zapResult = await sendCashuNutZap({
+            recipientPubkey: hexRecipient,
+            cashuToken: tokenFromVault,
+            amountSats,
+            comment: comment || "Value-4-Value eCash NutZap 🥜⚡ (Automated Vault Settlement)",
+            mintUrl: vaultMint,
+            giftWrap: true,
+          });
+
+          // Record spending in guardrails tracker and audit telemetry
+          await Promise.allSettled([
+            recordAgentSpending({
+              amountSats,
+              rail: "cashu",
+              recipientPubkey: hexRecipient,
+              eventId: zapResult.id,
+              memo: comment || "Stateful Vault NutZap",
+            }),
+            logAgentEvent({
+              type: "payment",
+              data: {
+                amountSats,
+                rail: "nutzap",
+                recipient: hexRecipient,
+                mint: vaultMint,
+                eventId: zapResult.id,
+                source: "agent_vault",
+                status: "settled",
+              },
+            }),
+            accumulateZapTotals({
+              pubkey: hexRecipient,
+              addTotalSats: amountSats,
+              addValidSats: amountSats,
+            }),
+            recordZapEdge("mcp_agent_sender", hexRecipient, amountSats),
+            logTelemetryEvent({
+              eventType: "payment.nutzap.settled",
+              category: "payment",
+              status: "success",
+              targetPubkey: hexRecipient,
+              amountSats,
+              metadata: {
+                eventId: zapResult.id,
+                mintUrl: vaultMint,
+                source: "agent_vault",
+              },
+            }),
+          ]);
+
+          const current24h = await getRolling24hSpend();
+          const policy = getSpendingPolicy();
+          const newVaultBalance = await getAgentWalletBalance();
+
+          const responseData = {
+            success: true,
+            status: "settled",
+            settlementSource: "agent_vault",
+            kind: 9321,
+            eventId: zapResult.id,
+            amountSats,
+            recipient: hexRecipient,
+            mintUrl: vaultMint,
+            changeToken: zapResult.changeToken,
+            guardrail: {
+              remainingDailySats: Math.max(0, policy.dailyLimitSats - current24h),
+            },
+            vault: {
+              remainingBalanceSats: newVaultBalance.totalBalanceSats,
+            },
+            message: `Successfully delivered ${amountSats.toLocaleString()} Sats NutZap to ${hexRecipient} from Agent Vault!`,
+          };
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(responseData, null, 2),
+              },
+            ],
+          };
+        } catch (vaultErr: any) {
+          console.warn("[pay_cashu_nutzap] Vault withdrawal failed, falling back to mint quote:", vaultErr?.message || vaultErr);
+        }
+      }
+
+      // Case C: Vault has insufficient funds or withdrawal fell back -> Request Lightning Mint Quote
       const quote = await createCashuMintQuote(amountSats, cleanMint);
 
       const quoteData = {
@@ -489,7 +594,8 @@ if (isToolAllowed("pay_cashu_nutzap")) {
         amountSats,
         mintUrl: quote.mintUrl,
         recipient: hexRecipient,
-        message: `Lightning invoice generated. Pay ${amountSats} sats to mint proofs and complete NutZap.`,
+        vaultBalanceSats: walletBalance.totalBalanceSats,
+        message: `Agent vault balance insufficient (${walletBalance.totalBalanceSats.toLocaleString()} sats available, ${amountSats.toLocaleString()} sats required). Fund via Lightning invoice or deposit_agent_wallet.`,
       };
 
       return {
@@ -1070,6 +1176,87 @@ if (isToolAllowed("get_agent_telemetry")) {
             {
               type: "text" as const,
               text: `Error retrieving agent telemetry: ${err?.message || String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+}
+
+// =============================================================================
+// Tool 10: get_agent_wallet_balance (Stateful Cashu Vault Inspector)
+// =============================================================================
+if (isToolAllowed("get_agent_wallet_balance")) {
+  mcpServer.tool(
+    "get_agent_wallet_balance",
+    "Check the autonomous AI agent's eCash wallet balance across all Cashu mints.",
+    {},
+    async () => {
+      try {
+        const balance = await getAgentWalletBalance();
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(balance, null, 2),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error fetching agent wallet balance: ${err?.message || String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+}
+
+// =============================================================================
+// Tool 11: deposit_agent_wallet (Fund Stateful Cashu Vault)
+// =============================================================================
+if (isToolAllowed("deposit_agent_wallet")) {
+  mcpServer.tool(
+    "deposit_agent_wallet",
+    "Deposit a Cashu eCash token into the autonomous AI agent's stateful local vault.",
+    {
+      cashuToken: z
+        .string()
+        .min(1)
+        .describe("Cashu eCash token string to deposit (e.g. cashuA... or cashuB...)"),
+    },
+    async ({ cashuToken }) => {
+      try {
+        const depositResult = await depositCashuToken(cashuToken);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  message: `Successfully deposited ${depositResult.depositedSats.toLocaleString()} Sats from mint ${depositResult.mintUrl}!`,
+                  ...depositResult,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error depositing Cashu token: ${err?.message || String(err)}`,
             },
           ],
           isError: true,

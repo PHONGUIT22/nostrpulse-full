@@ -1,29 +1,43 @@
 #!/usr/bin/env node
 import {
+  payWithNWC
+} from "./chunk-ZQA6N3HW.js";
+import {
   getSpendingSummary,
   recordAgentSpending
-} from "./chunk-DWHF6RI7.js";
+} from "./chunk-PZTMASYC.js";
+import {
+  depositCashuToken,
+  getAgentWalletBalance,
+  withdrawOrSplitProofsForPayment
+} from "./chunk-WIJBHFDL.js";
 import {
   DEFAULT_CASHU_MINT,
   auditCashuMint,
   createCashuMintQuote,
+  encodeCashuToken,
   parseCashuToken,
   routeCashuMint,
   sendCashuNutZap
-} from "./chunk-4EGGGMVW.js";
+} from "./chunk-6SAA5SH3.js";
 import {
   MAJOR_INDEXER_RELAYS,
   decodeBolt11AmountSats
-} from "./chunk-SMEXXZNP.js";
+} from "./chunk-PTQMZ56T.js";
 import "./chunk-O2IL2KZT.js";
 import {
   assertSpendingAllowed,
   getRolling24hSpend,
   getSpendingPolicy
-} from "./chunk-TOR67XZG.js";
+} from "./chunk-2V7NATOD.js";
 import {
   calculateTrustScore
 } from "./chunk-6HQMFGYN.js";
+import {
+  DEFAULT_RELAYS,
+  getNostrPool,
+  normalizeToHex
+} from "./chunk-ATKN57WH.js";
 import {
   encodeNpub,
   normalizePubkey,
@@ -35,7 +49,7 @@ import {
   logAgentEvent,
   logTelemetryEvent,
   queryTelemetryEvents
-} from "./chunk-3V5XEVMQ.js";
+} from "./chunk-QSUV5YTZ.js";
 import {
   accumulateZapTotals,
   getCreatorFromDb,
@@ -44,19 +58,11 @@ import {
   initDatabase,
   recordZapEdge,
   upsertZapTotals
-} from "./chunk-JHYB5MLN.js";
+} from "./chunk-GEF4V2OT.js";
+import "./chunk-5OMV7EKZ.js";
 import {
   getOrInitAgentIdentity
 } from "./chunk-OZL5FZ3S.js";
-import {
-  payWithNWC
-} from "./chunk-ZQA6N3HW.js";
-import {
-  DEFAULT_RELAYS,
-  getNostrPool,
-  normalizeToHex
-} from "./chunk-ATKN57WH.js";
-import "./chunk-5OMV7EKZ.js";
 
 // src/mcp-entry.ts
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -269,9 +275,9 @@ globalToolRegistry.registerTool({
     required: ["invoice"]
   },
   execute: async (args) => {
-    const { assertSpendingAllowed: assertSpendingAllowed2 } = await import("./guardrails-OGVQP7U6.js");
-    const { logAgentEvent: logAgentEvent2 } = await import("./telemetry-A6BRHBKS.js");
-    const { decodeBolt11AmountSats: decodeBolt11AmountSats2 } = await import("./indexer-7ILCYG4Z.js");
+    const { assertSpendingAllowed: assertSpendingAllowed2 } = await import("./guardrails-LVDFPAPW.js");
+    const { logAgentEvent: logAgentEvent2 } = await import("./telemetry-YTE5JVCU.js");
+    const { decodeBolt11AmountSats: decodeBolt11AmountSats2 } = await import("./indexer-FCLWXLSV.js");
     const { payWithNWC: payWithNWC2 } = await import("./nwc-NCU3WSOP.js");
     const amountSats = args.amountMsat && args.amountMsat > 0 ? Math.round(args.amountMsat / 1e3) : decodeBolt11AmountSats2(args.invoice) || 1;
     const guardrail = await assertSpendingAllowed2({
@@ -334,7 +340,7 @@ globalToolRegistry.registerTool({
     required: ["mintUrl"]
   },
   execute: async (args) => {
-    const { auditCashuMint: auditCashuMint2 } = await import("./mint-mesh-FZNRP26O.js");
+    const { auditCashuMint: auditCashuMint2 } = await import("./mint-mesh-VJKAQPD6.js");
     return auditCashuMint2(args.mintUrl, args.forceRefresh);
   }
 });
@@ -359,7 +365,7 @@ globalToolRegistry.registerTool({
     }
   },
   execute: async (args) => {
-    const { routeCashuMint: routeCashuMint2 } = await import("./mint-mesh-FZNRP26O.js");
+    const { routeCashuMint: routeCashuMint2 } = await import("./mint-mesh-VJKAQPD6.js");
     return routeCashuMint2({
       amountSats: args.amountSats,
       preferredMint: args.preferredMint,
@@ -394,7 +400,7 @@ globalToolRegistry.registerTool({
     properties: {}
   },
   execute: async () => {
-    const { getSpendingSummary: getSpendingSummary2 } = await import("./spending-guardrails-OITOT5Q6.js");
+    const { getSpendingSummary: getSpendingSummary2 } = await import("./spending-guardrails-F2UR74EM.js");
     return getSpendingSummary2();
   }
 });
@@ -415,8 +421,8 @@ globalToolRegistry.registerTool({
     }
   },
   execute: async (args) => {
-    const { getSpendingPolicy: getSpendingPolicy2, getRolling24hSpend: getRolling24hSpend2 } = await import("./guardrails-OGVQP7U6.js");
-    const { getAgentTelemetrySummary: getAgentTelemetrySummary2, getTelemetryOverview: getTelemetryOverview2, queryTelemetryEvents: queryTelemetryEvents2 } = await import("./telemetry-A6BRHBKS.js");
+    const { getSpendingPolicy: getSpendingPolicy2, getRolling24hSpend: getRolling24hSpend2 } = await import("./guardrails-LVDFPAPW.js");
+    const { getAgentTelemetrySummary: getAgentTelemetrySummary2, getTelemetryOverview: getTelemetryOverview2, queryTelemetryEvents: queryTelemetryEvents2 } = await import("./telemetry-YTE5JVCU.js");
     const hours = Number(args.timeframeHours) || 24;
     const limit = Number(args.limit) || 20;
     const policy = getSpendingPolicy2();
@@ -436,6 +442,36 @@ globalToolRegistry.registerTool({
       events,
       overview
     };
+  }
+});
+globalToolRegistry.registerTool({
+  name: "get_agent_wallet_balance",
+  description: "Check the autonomous AI agent's eCash wallet balance across all Cashu mints.",
+  inputSchema: {
+    type: "object",
+    properties: {}
+  },
+  execute: async () => {
+    const { getAgentWalletBalance: getAgentWalletBalance2 } = await import("./wallet-vault-4TXRFQ6A.js");
+    return getAgentWalletBalance2();
+  }
+});
+globalToolRegistry.registerTool({
+  name: "deposit_agent_wallet",
+  description: "Deposit a Cashu eCash token into the autonomous AI agent's stateful local vault.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      cashuToken: {
+        type: "string",
+        description: "Cashu eCash token string to deposit (e.g. cashuA... or cashuB...)"
+      }
+    },
+    required: ["cashuToken"]
+  },
+  execute: async (args) => {
+    const { depositCashuToken: depositCashuToken2 } = await import("./wallet-vault-4TXRFQ6A.js");
+    return depositCashuToken2(args.cashuToken);
   }
 });
 
@@ -863,7 +899,9 @@ var PROFILE_TOOLS = {
     "route_cashu_mint",
     "get_agent_identity",
     "get_spending_guardrails",
-    "get_agent_telemetry"
+    "get_agent_telemetry",
+    "get_agent_wallet_balance",
+    "deposit_agent_wallet"
   ]
 };
 function resolveActiveProfile() {
@@ -1176,6 +1214,94 @@ if (isToolAllowed("pay_cashu_nutzap")) {
             ]
           };
         }
+        const walletBalance = await getAgentWalletBalance();
+        if (walletBalance.totalBalanceSats >= amountSats) {
+          try {
+            const { sendProofs, mintUrl: vaultMint } = await withdrawOrSplitProofsForPayment(
+              amountSats,
+              cleanMint
+            );
+            const tokenFromVault = encodeCashuToken(vaultMint, sendProofs);
+            const zapResult = await sendCashuNutZap({
+              recipientPubkey: hexRecipient,
+              cashuToken: tokenFromVault,
+              amountSats,
+              comment: comment || "Value-4-Value eCash NutZap \u{1F95C}\u26A1 (Automated Vault Settlement)",
+              mintUrl: vaultMint,
+              giftWrap: true
+            });
+            await Promise.allSettled([
+              recordAgentSpending({
+                amountSats,
+                rail: "cashu",
+                recipientPubkey: hexRecipient,
+                eventId: zapResult.id,
+                memo: comment || "Stateful Vault NutZap"
+              }),
+              logAgentEvent({
+                type: "payment",
+                data: {
+                  amountSats,
+                  rail: "nutzap",
+                  recipient: hexRecipient,
+                  mint: vaultMint,
+                  eventId: zapResult.id,
+                  source: "agent_vault",
+                  status: "settled"
+                }
+              }),
+              accumulateZapTotals({
+                pubkey: hexRecipient,
+                addTotalSats: amountSats,
+                addValidSats: amountSats
+              }),
+              recordZapEdge("mcp_agent_sender", hexRecipient, amountSats),
+              logTelemetryEvent({
+                eventType: "payment.nutzap.settled",
+                category: "payment",
+                status: "success",
+                targetPubkey: hexRecipient,
+                amountSats,
+                metadata: {
+                  eventId: zapResult.id,
+                  mintUrl: vaultMint,
+                  source: "agent_vault"
+                }
+              })
+            ]);
+            const current24h = await getRolling24hSpend();
+            const policy = getSpendingPolicy();
+            const newVaultBalance = await getAgentWalletBalance();
+            const responseData = {
+              success: true,
+              status: "settled",
+              settlementSource: "agent_vault",
+              kind: 9321,
+              eventId: zapResult.id,
+              amountSats,
+              recipient: hexRecipient,
+              mintUrl: vaultMint,
+              changeToken: zapResult.changeToken,
+              guardrail: {
+                remainingDailySats: Math.max(0, policy.dailyLimitSats - current24h)
+              },
+              vault: {
+                remainingBalanceSats: newVaultBalance.totalBalanceSats
+              },
+              message: `Successfully delivered ${amountSats.toLocaleString()} Sats NutZap to ${hexRecipient} from Agent Vault!`
+            };
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(responseData, null, 2)
+                }
+              ]
+            };
+          } catch (vaultErr) {
+            console.warn("[pay_cashu_nutzap] Vault withdrawal failed, falling back to mint quote:", vaultErr?.message || vaultErr);
+          }
+        }
         const quote = await createCashuMintQuote(amountSats, cleanMint);
         const quoteData = {
           success: true,
@@ -1185,7 +1311,8 @@ if (isToolAllowed("pay_cashu_nutzap")) {
           amountSats,
           mintUrl: quote.mintUrl,
           recipient: hexRecipient,
-          message: `Lightning invoice generated. Pay ${amountSats} sats to mint proofs and complete NutZap.`
+          vaultBalanceSats: walletBalance.totalBalanceSats,
+          message: `Agent vault balance insufficient (${walletBalance.totalBalanceSats.toLocaleString()} sats available, ${amountSats.toLocaleString()} sats required). Fund via Lightning invoice or deposit_agent_wallet.`
         };
         return {
           content: [
@@ -1638,6 +1765,76 @@ if (isToolAllowed("get_agent_telemetry")) {
             {
               type: "text",
               text: `Error retrieving agent telemetry: ${err?.message || String(err)}`
+            }
+          ],
+          isError: true
+        };
+      }
+    }
+  );
+}
+if (isToolAllowed("get_agent_wallet_balance")) {
+  mcpServer.tool(
+    "get_agent_wallet_balance",
+    "Check the autonomous AI agent's eCash wallet balance across all Cashu mints.",
+    {},
+    async () => {
+      try {
+        const balance = await getAgentWalletBalance();
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(balance, null, 2)
+            }
+          ]
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error fetching agent wallet balance: ${err?.message || String(err)}`
+            }
+          ],
+          isError: true
+        };
+      }
+    }
+  );
+}
+if (isToolAllowed("deposit_agent_wallet")) {
+  mcpServer.tool(
+    "deposit_agent_wallet",
+    "Deposit a Cashu eCash token into the autonomous AI agent's stateful local vault.",
+    {
+      cashuToken: z2.string().min(1).describe("Cashu eCash token string to deposit (e.g. cashuA... or cashuB...)")
+    },
+    async ({ cashuToken }) => {
+      try {
+        const depositResult = await depositCashuToken(cashuToken);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  success: true,
+                  message: `Successfully deposited ${depositResult.depositedSats.toLocaleString()} Sats from mint ${depositResult.mintUrl}!`,
+                  ...depositResult
+                },
+                null,
+                2
+              )
+            }
+          ]
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error depositing Cashu token: ${err?.message || String(err)}`
             }
           ],
           isError: true

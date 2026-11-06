@@ -5,7 +5,7 @@ import {
 import {
   getRecentSpendingRecords,
   insertSpendingRecord
-} from "./chunk-JHYB5MLN.js";
+} from "./chunk-GEF4V2OT.js";
 
 // src/lib/spending-guardrails.ts
 var inMemorySpendingRecords = [];
@@ -51,7 +51,7 @@ async function getDailySpentSats() {
   } catch {
   }
   try {
-    const { getRolling24hApprovedSpend } = await import("./db-LHPVZTQM.js");
+    const { getRolling24hApprovedSpend } = await import("./db-5QFQ3SBN.js");
     const rollingSpent = await getRolling24hApprovedSpend(oneDayAgoSec);
     if (rollingSpent > 0) {
       dbTotalSats += rollingSpent;

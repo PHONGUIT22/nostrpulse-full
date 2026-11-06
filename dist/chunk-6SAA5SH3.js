@@ -7,6 +7,9 @@ import {
   calculateTrustScore
 } from "./chunk-6HQMFGYN.js";
 import {
+  fetchNostrProfile
+} from "./chunk-ATKN57WH.js";
+import {
   encodeNpub,
   getWebOfTrustDistance,
   normalizePubkey
@@ -14,10 +17,7 @@ import {
 import {
   getCreatorFromDb,
   getZapTotalsFromDb
-} from "./chunk-JHYB5MLN.js";
-import {
-  fetchNostrProfile
-} from "./chunk-ATKN57WH.js";
+} from "./chunk-GEF4V2OT.js";
 
 // src/lib/cashu.ts
 import { getDecodedToken, getEncodedToken, Wallet } from "@cashu/cashu-ts";
@@ -716,6 +716,49 @@ async function splitCashuToken(tokenString, amountToSend, overrideMintUrl) {
       throw error;
     }
   });
+}
+async function verifyTokenWithMint(tokenString) {
+  try {
+    const info = parseCashuToken(tokenString);
+    const cleanMint = info.mint.replace(/\/+$/, "");
+    const verifyPromise = (async () => {
+      try {
+        const wallet = new Wallet(cleanMint, { unit: info.unit });
+        if (typeof wallet.loadMint === "function") {
+          try {
+            await wallet.loadMint();
+          } catch (loadErr) {
+            console.debug("[Cashu] loadMint error during token verification:", loadErr);
+          }
+        }
+        let spentStates = [];
+        if (typeof wallet.checkProofStates === "function") {
+          spentStates = await wallet.checkProofStates(info.proofs);
+        } else if (typeof wallet.checkProofsSpent === "function") {
+          spentStates = await wallet.checkProofsSpent(info.proofs);
+        } else if (typeof wallet.checkProofsState === "function") {
+          spentStates = await wallet.checkProofsState(info.proofs);
+        }
+        if (Array.isArray(spentStates) && spentStates.length > 0) {
+          const isSpent = spentStates.some(
+            (s) => s === true || s?.state === "SPENT" || s?.spent === true
+          );
+          if (isSpent) {
+            return { isValid: false, reason: "This Cashu eCash token has already been spent/claimed." };
+          }
+        }
+      } catch (e) {
+        console.debug("[Cashu] Mint verification check warning:", e);
+      }
+      return { isValid: true };
+    })();
+    const timeoutPromise = new Promise(
+      (resolve) => setTimeout(() => resolve({ isValid: true }), 3e3)
+    );
+    return await Promise.race([verifyPromise, timeoutPromise]);
+  } catch (err) {
+    return { isValid: false, reason: err.message || "Failed to verify token with Mint node." };
+  }
 }
 async function createCashuMintQuote(amountSats, mintUrl = DEFAULT_CASHU_MINT) {
   const cleanMint = mintUrl.trim().replace(/\/+$/, "");
@@ -1559,7 +1602,11 @@ export {
   selectBestMint,
   routeCashuMint,
   DEFAULT_CASHU_MINT,
+  encodeCashuToken,
   parseCashuToken,
+  KeyedAsyncMutex,
+  splitCashuToken,
+  verifyTokenWithMint,
   createCashuMintQuote,
   sendCashuNutZap
 };

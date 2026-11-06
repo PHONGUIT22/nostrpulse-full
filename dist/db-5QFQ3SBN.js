@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import {
   accumulateZapTotals,
+  clearVaultProofs,
   getAgentSpendingLogs,
   getAgentTelemetryRecords,
   getAllCreatorsFromDb,
@@ -13,21 +14,26 @@ import {
   getTopCreatorsFromDb,
   getTopZappedCreatorsFromDb,
   getTrustEdgesFromDb,
+  getUnspentVaultProofs,
+  getVaultBalanceSummary,
   getZapTotalsFromDb,
   initDatabase,
   insertAgentSpendingLog,
   insertAgentTelemetry,
   insertSpendingRecord,
   insertTelemetryEvent,
+  insertVaultProofs,
+  markVaultProofsSpent,
   recordZapEdge,
   rowToCreator,
   upsertCreator,
   upsertTrustEdges,
   upsertZapTotals
-} from "./chunk-JHYB5MLN.js";
+} from "./chunk-GEF4V2OT.js";
 import "./chunk-5OMV7EKZ.js";
 export {
   accumulateZapTotals,
+  clearVaultProofs,
   getAgentSpendingLogs,
   getAgentTelemetryRecords,
   getAllCreatorsFromDb,
@@ -40,12 +46,16 @@ export {
   getTopCreatorsFromDb,
   getTopZappedCreatorsFromDb,
   getTrustEdgesFromDb,
+  getUnspentVaultProofs,
+  getVaultBalanceSummary,
   getZapTotalsFromDb,
   initDatabase,
   insertAgentSpendingLog,
   insertAgentTelemetry,
   insertSpendingRecord,
   insertTelemetryEvent,
+  insertVaultProofs,
+  markVaultProofsSpent,
   recordZapEdge,
   rowToCreator,
   upsertCreator,
