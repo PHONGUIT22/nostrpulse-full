@@ -1,8 +1,8 @@
 <div align="center">
 
-# ⚡ NostrPulse
-### The Decentralized Stripe & Radar for Autonomous AI Agents
-**Autonomous Payment & Sybil-Resistant Trust Layer for AI Agents via Nostr, Cashu eCash (NIP-61), and MCP.**
+# ⚡ NostrPulse (`nostrpulse-mcp`)
+### Autonomous Micropayments (Cashu eCash & NIP-61) and Guardrails for AI Agents
+**The Decentralized Stripe & Radar for Autonomous AI Agents via Nostr, Cashu eCash (NIP-61), and Model Context Protocol (MCP).**
 
 [![npm version](https://img.shields.io/npm/v/nostrpulse-mcp?style=for-the-badge&color=CB3837&logo=npm)](https://www.npmjs.com/package/nostrpulse-mcp)
 [![Release: v1.3.2](https://img.shields.io/badge/Release-v1.3.2-2563EB?style=for-the-badge&logo=github)](https://github.com/PHONGUIT22/nostrpulse-full/releases)

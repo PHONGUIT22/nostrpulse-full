@@ -1,0 +1,56 @@
+# NostrPulse (nostrpulse-mcp)
+> The Decentralized Stripe & Radar for Autonomous AI Agents. An open-source, zero-dependency infrastructure bridging Nostr Web-of-Trust (WoT) and Cashu NutZap eCash micro-payments with autonomous spending guardrails for AI agents via the Model Context Protocol (MCP).
+
+## Core Capabilities
+- **Stateful Cashu Agent Vault**: Persistent local SQLite eCash vault (`nostrpulse.db`) supporting multi-mint balances, autonomous coin selection, token splitting, and change retention.
+- **Autonomous Spending Guardrails**: Mathematical spending caps (single-tx sat limit, rolling 24-hour budget allowance, and cool-down periods) preventing wallet drain from prompt injection or hallucinations.
+- **5-Pillar Anti-Sybil Web-of-Trust Radar**: Graph distance and transitive hop verification across 22 Root Anchors to prevent Sybil bot attacks before micro-settlement.
+- **Metadata-Private eCash Rails**: NIP-61 NutZap payments wrapped in NIP-59 Gift Wrap with NIP-44 encryption and timestamp jittering.
+- **Distributed Compute Broker**: NIP-90 Data Vending Machine (DVM) task delegation with local SLM/Ollama fallback.
+- **Standardized MCP Interface**: Stdio JSON-RPC server compatible with Claude Desktop, Cursor, LangChain, and autonomous agent loops.
+
+## Quickstart & Installation
+
+### Claude Desktop & Cursor Configuration
+Add to `claude_desktop_config.json` or `.cursor/mcp.json`:
+```json
+{
+  "mcpServers": {
+    "nostrpulse": {
+      "command": "npx",
+      "args": ["-y", "nostrpulse-mcp"]
+    }
+  }
+}
+```
+
+### Standalone TypeScript SDK
+Install: `npm install nostrpulse-mcp`
+Import:
+```typescript
+import { 
+  getAgentWalletBalance, 
+  depositCashuToken, 
+  withdrawOrSplitProofsForPayment, 
+  calculateTrustScore 
+} from "nostrpulse-mcp/sdk";
+```
+
+## Core MCP Tools Reference
+- `check_trust_score`: Verifies anti-Sybil Trust Score (0-100) and Web-of-Trust distance for a Nostr pubkey.
+- `get_agent_wallet_balance`: Returns the agent's current eCash satoshi balance aggregated across all connected Cashu mints.
+- `deposit_agent_wallet`: Deposits an incoming Cashu token string into the local persistent vault.
+- `pay_cashu_nutzap`: Sends a NIP-61 NutZap payment. Automatically draws and splits funds from the agent vault if no external token is provided.
+- `request_nip90_job`: Dispatches asynchronous compute tasks to decentralized Nostr DVMs with automated timeout and local fallback.
+- `pay_lightning_nwc`: Direct Lightning payment via NIP-47 Nostr Wallet Connect.
+- `audit_cashu_mint`: Evaluates NUT-06 health and 5-Pillar counterparty trust score for Cashu mints.
+- `route_cashu_mint`: Selects the most reliable Cashu mint across the dynamic mint mesh.
+- `get_spending_guardrails`: Returns active budget policies and rolling 24-hour spend allowance.
+- `get_agent_telemetry`: Exports audit trail and latency metrics for agent transactions.
+
+## Official Resources & Links
+- GitHub: https://github.com/PHONGUIT22/nostrpulse-full
+- NPM Package: https://www.npmjs.com/package/nostrpulse-mcp
+- Official MCP Registry: https://registry.modelcontextprotocol.io/?q=nostrpulse
+- Live Explorer: https://nostrpulse.vercel.app
+- HRF Grant Roadmap: docs/HRF_GRANT_ROADMAP.md
