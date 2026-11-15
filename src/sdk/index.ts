@@ -198,3 +198,18 @@ export {
   vaultMutex,
 } from "../lib/wallet-vault";
 
+// =============================================================================
+// 9. Unified Agent Wallet Facade (3-Line Developer Experience)
+// =============================================================================
+export {
+  NostrPulseAgent,
+  createAgentWallet,
+} from "../lib/agent-facade";
+export type {
+  AgentWalletConfig,
+  AgentWalletStatus,
+  AgentPeerVerification,
+  AgentPayParams,
+  AgentPayReceipt,
+} from "../lib/agent-facade";
+

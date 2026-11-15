@@ -7,6 +7,9 @@ import {
   getZapTotalsFromDb,
   initDatabase,
   insertAgentSpendingLog,
+  insertAgentTelemetry,
+  insertSpendingRecord,
+  insertTelemetryEvent,
   insertVaultProofs,
   markVaultProofsSpent
 } from "../chunk-AUOQWW5Q.js";
@@ -73968,6 +73971,394 @@ async function withdrawOrSplitProofsForPayment(amountSats, preferredMint) {
     }
   });
 }
+
+// src/lib/spending-guardrails.ts
+var inMemorySpendingRecords = [];
+var MAX_RING_BUFFER_SIZE = 500;
+function getSpendingConfig() {
+  const parseEnvInt = (key, fallback) => {
+    const val = process.env[key]?.trim();
+    if (!val) return fallback;
+    const parsed = parseInt(val, 10);
+    return isNaN(parsed) || parsed < 0 ? fallback : parsed;
+  };
+  const isEnabled = process.env.AGENT_GUARDRAILS_ENABLED !== "false" && process.env.AGENT_GUARDRAILS_ENABLED !== "0";
+  return {
+    maxPerTxSats: parseEnvInt("AGENT_MAX_SATS_PER_TX", parseEnvInt("AGENT_MAX_TX_SATS", 50)),
+    dailyBudgetSats: parseEnvInt(
+      "AGENT_DAILY_LIMIT_SATS",
+      parseEnvInt("AGENT_DAILY_BUDGET_SATS", 500)
+    ),
+    minRecipientTrustScore: parseEnvInt("AGENT_MIN_RECIPIENT_TRUST_SCORE", 0),
+    enabled: isEnabled
+  };
+}
+var activeConfig = getSpendingConfig();
+async function recordAgentSpending(record) {
+  const id = `sp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const nowSec = Math.floor(Date.now() / 1e3);
+  const spendingRecord = {
+    id,
+    amountSats: record.amountSats,
+    rail: record.rail,
+    recipientPubkey: record.recipientPubkey,
+    eventId: record.eventId,
+    memo: record.memo,
+    createdAt: Date.now()
+  };
+  inMemorySpendingRecords.unshift(spendingRecord);
+  if (inMemorySpendingRecords.length > MAX_RING_BUFFER_SIZE) {
+    inMemorySpendingRecords.pop();
+  }
+  try {
+    await insertSpendingRecord({
+      id,
+      amount_sats: record.amountSats,
+      rail: record.rail,
+      recipient_pubkey: record.recipientPubkey || null,
+      event_id: record.eventId || null,
+      memo: record.memo || null,
+      created_at: nowSec
+    });
+  } catch (err) {
+    console.debug("[SpendingGuardrails] Notice: SQLite persistence fallback to in-memory:", err);
+  }
+  return spendingRecord;
+}
+
+// src/lib/telemetry.ts
+var inMemoryTelemetryEvents = [];
+var MAX_TELEMETRY_RING_SIZE = 500;
+async function logTelemetryEvent(event) {
+  const id = event.id || `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const createdAt = event.createdAt || Date.now();
+  const nowSec = Math.floor(createdAt / 1e3);
+  let actorPubkey = event.actorPubkey;
+  if (!actorPubkey) {
+    try {
+      actorPubkey = getAgentPubkey();
+    } catch {
+      actorPubkey = "nostrpulse_agent";
+    }
+  }
+  const completeEvent = {
+    id,
+    eventType: event.eventType,
+    category: event.category,
+    status: event.status,
+    actorPubkey,
+    targetPubkey: event.targetPubkey,
+    amountSats: event.amountSats ?? 0,
+    latencyMs: event.latencyMs ?? 0,
+    metadata: event.metadata || {},
+    error: event.error,
+    createdAt
+  };
+  inMemoryTelemetryEvents.unshift(completeEvent);
+  if (inMemoryTelemetryEvents.length > MAX_TELEMETRY_RING_SIZE) {
+    inMemoryTelemetryEvents.pop();
+  }
+  try {
+    await insertTelemetryEvent({
+      id,
+      event_type: completeEvent.eventType,
+      category: completeEvent.category,
+      status: completeEvent.status,
+      actor_pubkey: completeEvent.actorPubkey || null,
+      target_pubkey: completeEvent.targetPubkey || null,
+      amount_sats: completeEvent.amountSats,
+      latency_ms: completeEvent.latencyMs,
+      metadata_json: JSON.stringify(completeEvent.metadata || {}),
+      error: completeEvent.error || null,
+      created_at: nowSec
+    });
+  } catch (err) {
+    console.debug("[Telemetry] SQLite persistence notice:", err);
+  }
+  return completeEvent;
+}
+async function logAgentEvent(event) {
+  const id = `tel_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const timestamp = Math.floor(Date.now() / 1e3);
+  const amountSats = Number(
+    event.data?.amountSats || event.data?.amount_sats || event.data?.amount || 0
+  );
+  await insertAgentTelemetry({
+    id,
+    timestamp,
+    type: event.type,
+    data_json: JSON.stringify(event.data || {}),
+    amount_sats: amountSats
+  });
+  return {
+    id,
+    timestamp,
+    type: event.type,
+    data: event.data,
+    amountSats
+  };
+}
+
+// src/lib/agent-facade.ts
+var NostrPulseAgent = class {
+  constructor(config = {}) {
+    this.initialized = false;
+    this.identity = null;
+    this.config = { ...config };
+    const basePolicy = getSpendingPolicy();
+    this.policy = {
+      maxSatsPerTx: config.maxSingleTxSats ?? basePolicy.maxSatsPerTx,
+      dailyLimitSats: config.maxDailySats ?? basePolicy.dailyLimitSats,
+      minTrustScoreTarget: config.minTrustScore ?? 50
+    };
+  }
+  /**
+   * Initializes local SQLite storage, agent Nostr identity, and active spending policy.
+   */
+  async init() {
+    if (!this.initialized) {
+      await initDatabase();
+      this.identity = await getOrInitAgentIdentity();
+      this.initialized = true;
+    }
+    updateSpendingPolicy(this.policy);
+  }
+  /**
+   * Returns current agent identity, multi-mint eCash balances, and budget utilization.
+   */
+  async getBalance() {
+    await this.init();
+    const identity = this.identity || await getOrInitAgentIdentity();
+    const [walletBalance, rolling24hSpendSats] = await Promise.all([
+      getAgentWalletBalance(),
+      getRolling24hSpend()
+    ]);
+    const remainingDailyBudgetSats = Math.max(
+      0,
+      this.policy.dailyLimitSats - rolling24hSpendSats
+    );
+    return {
+      agentPubkey: identity.pubkey,
+      agentNpub: identity.npub,
+      totalBalanceSats: walletBalance.totalBalanceSats,
+      mints: walletBalance.mints,
+      policy: {
+        maxSingleTxSats: this.policy.maxSatsPerTx,
+        maxDailySats: this.policy.dailyLimitSats,
+        minTrustScore: this.policy.minTrustScoreTarget,
+        rolling24hSpendSats,
+        remainingDailyBudgetSats
+      }
+    };
+  }
+  /**
+   * Deposits an incoming Cashu eCash token into the agent's local stateful vault.
+   */
+  async deposit(cashuToken, options) {
+    await this.init();
+    return await depositCashuToken(cashuToken, {
+      skipMintVerification: options?.skipRemoteVerify
+    });
+  }
+  /**
+   * Evaluates a recipient pubkey/npub against the 5-Pillar Web-of-Trust anti-Sybil radar.
+   */
+  async verifyPeer(pubkeyOrNpub) {
+    await this.init();
+    const hex = normalizePubkey(pubkeyOrNpub);
+    if (!hex) {
+      throw new Error(`Invalid Nostr pubkey or npub: "${pubkeyOrNpub}"`);
+    }
+    const npub = encodeNpub(hex);
+    const [wot, trustScore] = await Promise.all([
+      resolveWebOfTrustDistance(hex, { timeoutMs: 2500 }),
+      resolveRecipientTrustScore(hex)
+    ]);
+    const anchor = isRootAnchor(hex) || wot.isDirectAnchor;
+    const allowedToPay = trustScore >= this.policy.minTrustScoreTarget;
+    return {
+      pubkey: hex,
+      npub,
+      trustScore,
+      wotDistance: wot.distance,
+      isRootAnchor: anchor,
+      allowedToPay
+    };
+  }
+  /**
+   * Executes an autonomous agent payment through the 5-stage pipeline:
+   * Identity/DB -> WoT & Guardrails Firewall -> Auto-Vault & Split / NWC -> Settlement -> Telemetry.
+   */
+  async pay(params) {
+    await this.init();
+    const hexRecipient = normalizePubkey(params.to);
+    if (!hexRecipient) {
+      return {
+        success: false,
+        status: "failed",
+        amountSats: params.amountSats,
+        recipient: params.to,
+        reason: `Invalid recipient Nostr pubkey or npub: "${params.to}"`
+      };
+    }
+    const railType = params.bolt11Invoice ? "nwc" : "nutzap";
+    const receiptRail = params.bolt11Invoice ? "lightning_nwc" : "cashu_nutzap";
+    const guardrail = await assertSpendingAllowed({
+      amountSats: params.amountSats,
+      recipientPubkey: hexRecipient,
+      rail: railType
+    });
+    if (!guardrail.allowed) {
+      await Promise.allSettled([
+        logAgentEvent({
+          type: "radar_block",
+          data: {
+            amountSats: params.amountSats,
+            recipient: hexRecipient,
+            rail: receiptRail,
+            reason: guardrail.reason
+          }
+        }),
+        logTelemetryEvent({
+          eventType: "payment.guardrail_blocked",
+          category: "payment",
+          status: "blocked",
+          targetPubkey: hexRecipient,
+          amountSats: params.amountSats,
+          metadata: { rail: receiptRail, reason: guardrail.reason },
+          error: guardrail.reason
+        })
+      ]);
+      return {
+        success: false,
+        status: "blocked_by_guardrails",
+        rail: receiptRail,
+        amountSats: params.amountSats,
+        recipient: hexRecipient,
+        reason: guardrail.reason
+      };
+    }
+    try {
+      let txId = "";
+      let mintUrl;
+      if (params.bolt11Invoice) {
+        if (params.dryRun) {
+          txId = `dryrun_nwc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        } else {
+          const nwcResult = await payWithNWC({ invoice: params.bolt11Invoice });
+          if (nwcResult.status !== "success") {
+            return {
+              success: false,
+              status: "failed",
+              rail: "lightning_nwc",
+              amountSats: params.amountSats,
+              recipient: hexRecipient,
+              reason: nwcResult.error || `NWC payment ${nwcResult.status}`
+            };
+          }
+          txId = nwcResult.preimage || nwcResult.responseEventId || `nwc_${Date.now()}`;
+        }
+      } else {
+        let tokenToSend = params.cashuToken?.trim();
+        mintUrl = this.config.preferredMintUrl || DEFAULT_CASHU_MINT2;
+        if (!tokenToSend) {
+          const withdrawn = await withdrawOrSplitProofsForPayment(
+            params.amountSats,
+            this.config.preferredMintUrl
+          );
+          mintUrl = withdrawn.mintUrl;
+          tokenToSend = encodeCashuToken(mintUrl, withdrawn.sendProofs);
+        } else {
+          const parsed = parseCashuToken(tokenToSend);
+          if (parsed.totalAmountSats < params.amountSats) {
+            return {
+              success: false,
+              status: "failed",
+              rail: "cashu_nutzap",
+              amountSats: params.amountSats,
+              recipient: hexRecipient,
+              reason: `Provided Cashu token balance (${parsed.totalAmountSats} sats) is less than requested ${params.amountSats} sats.`
+            };
+          }
+          mintUrl = parsed.mint || mintUrl;
+        }
+        if (params.dryRun) {
+          txId = `dryrun_nutzap_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        } else {
+          const zapResult = await sendCashuNutZap({
+            recipientPubkey: hexRecipient,
+            cashuToken: tokenToSend,
+            amountSats: params.amountSats,
+            comment: params.memo || "Value-4-Value eCash NutZap",
+            mintUrl,
+            giftWrap: true
+          });
+          txId = zapResult.giftWrapId || zapResult.id;
+        }
+      }
+      await Promise.allSettled([
+        recordAgentSpending({
+          amountSats: params.amountSats,
+          rail: params.bolt11Invoice ? "lightning_nwc" : "cashu",
+          recipientPubkey: hexRecipient,
+          eventId: txId,
+          memo: params.memo
+        }),
+        logAgentEvent({
+          type: "payment",
+          data: {
+            amountSats: params.amountSats,
+            rail: receiptRail,
+            recipient: hexRecipient,
+            mint: mintUrl,
+            txId,
+            dryRun: Boolean(params.dryRun),
+            status: "settled"
+          }
+        }),
+        logTelemetryEvent({
+          eventType: params.bolt11Invoice ? "payment.nwc.settled" : "payment.nutzap.settled",
+          category: "payment",
+          status: "success",
+          targetPubkey: hexRecipient,
+          amountSats: params.amountSats,
+          metadata: {
+            txId,
+            mintUrl,
+            dryRun: Boolean(params.dryRun)
+          }
+        })
+      ]);
+      const [walletBalance, spent24h] = await Promise.all([
+        getAgentWalletBalance(),
+        getRolling24hSpend()
+      ]);
+      return {
+        success: true,
+        status: "settled",
+        rail: receiptRail,
+        txId,
+        amountSats: params.amountSats,
+        recipient: hexRecipient,
+        mintUrl,
+        remainingBalanceSats: walletBalance.totalBalanceSats,
+        remainingDailyBudgetSats: Math.max(0, this.policy.dailyLimitSats - spent24h)
+      };
+    } catch (err) {
+      return {
+        success: false,
+        status: "failed",
+        rail: receiptRail,
+        amountSats: params.amountSats,
+        recipient: hexRecipient,
+        reason: err?.message || String(err)
+      };
+    }
+  }
+};
+function createAgentWallet(config) {
+  return new NostrPulseAgent(config);
+}
 export {
   ANCHOR_PUBKEYS,
   DEFAULT_CASHU_MINT2 as DEFAULT_CASHU_MINT,
@@ -73977,6 +74368,7 @@ export {
   GIFT_WRAP_KIND,
   KeyedAsyncMutex,
   NOTIFICATION_KIND,
+  NostrPulseAgent,
   PRIVATE_DIRECT_MESSAGE_KIND,
   RECOMMENDED_MINTS,
   ROOT_ANCHORS,
@@ -73990,6 +74382,7 @@ export {
   calculateTrustScore,
   calculateTrustScoreAsync,
   clearAgentIdentityCache,
+  createAgentWallet,
   createCashuMintQuote,
   decodeCbor,
   depositCashuToken,

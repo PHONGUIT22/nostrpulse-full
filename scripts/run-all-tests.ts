@@ -54,6 +54,11 @@ const TEST_SUITES: TestSuite[] = [
     file: "scripts/test-stateful-agent-wallet.ts",
     description: "Multi-mint vault balance, proof splits & overdraw guards",
   },
+  {
+    name: "Unified Agent Wallet Facade",
+    file: "scripts/test-unified-agent-facade.ts",
+    description: "3-line NostrPulseAgent deposit, WoT verifyPeer & guarded pay",
+  },
 ];
 
 interface TestResult {

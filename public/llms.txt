@@ -24,7 +24,17 @@ Add to `claude_desktop_config.json` or `.cursor/mcp.json`:
 }
 ```
 
-### Standalone TypeScript SDK
+### ⚡ 3-Line SDK Quickstart (Unified Agent Wallet)
+Install: `npm install nostrpulse-mcp`
+```typescript
+import { NostrPulseAgent } from "nostrpulse-mcp/sdk";
+
+const wallet = new NostrPulseAgent({ maxDailySats: 5000, minTrustScore: 65 });
+await wallet.deposit("cashuAeyJ0b2tlbiI6...");
+const receipt = await wallet.pay({ to: "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6", amountSats: 21, memo: "AI task settlement" });
+```
+
+### Standalone TypeScript SDK (Low-Level Primitives)
 Install: `npm install nostrpulse-mcp`
 Import:
 ```typescript

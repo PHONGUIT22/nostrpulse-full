@@ -938,7 +938,7 @@ function isToolAllowed(name) {
 }
 var mcpServer = new McpServer({
   name: "nostrpulse-mcp-server",
-  version: "1.3.2"
+  version: "1.3.3"
 });
 if (isToolAllowed("check_trust_score")) {
   mcpServer.tool(

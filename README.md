@@ -5,8 +5,8 @@
 **The Decentralized Stripe & Radar for Autonomous AI Agents via Nostr, Cashu eCash (NIP-61), and Model Context Protocol (MCP).**
 
 [![npm version](https://img.shields.io/npm/v/nostrpulse-mcp?style=for-the-badge&color=CB3837&logo=npm)](https://www.npmjs.com/package/nostrpulse-mcp)
-[![Release: v1.3.2](https://img.shields.io/badge/Release-v1.3.2-2563EB?style=for-the-badge&logo=github)](https://github.com/PHONGUIT22/nostrpulse-full/releases)
-[![MCP Registry](https://img.shields.io/badge/MCP_Registry-v1.3.2-blue?style=for-the-badge&logo=anthropic)](https://registry.modelcontextprotocol.io/?q=nostrpulse)
+[![Release: v1.3.3](https://img.shields.io/badge/Release-v1.3.3-2563EB?style=for-the-badge&logo=github)](https://github.com/PHONGUIT22/nostrpulse-full/releases)
+[![MCP Registry](https://img.shields.io/badge/MCP_Registry-v1.3.3-blue?style=for-the-badge&logo=anthropic)](https://registry.modelcontextprotocol.io/?q=nostrpulse)
 [![MCP Stdio](https://img.shields.io/badge/MCP-Stdio_Protocol-009688?style=for-the-badge)](https://modelcontextprotocol.io)
 [![Listed on awesome-remote-mcp-servers](https://img.shields.io/badge/Listed_on-awesome--remote--mcp--servers-2563EB?style=for-the-badge&logo=github)](https://github.com/Appnova-EU-OU/awesome-remote-mcp-servers)
 [![FreeMCP Registry](https://img.shields.io/badge/FreeMCP-Verified_Server-009688?style=for-the-badge&logo=fastapi)](https://freemcp.space/np79857/nostrpulse-full)
@@ -63,6 +63,18 @@ Paste this configuration directly into your `claude_desktop_config.json` or `.cu
   * **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
   * **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 * **Cursor IDE:** Save to `.cursor/mcp.json` in your project root, or add under *Cursor Settings > Features > MCP*.
+
+### ⚡ 3-Line SDK Quickstart (Unified Agent Wallet)
+
+For TypeScript/Node.js AI developers who want autonomous eCash/Lightning rails with built-in anti-Sybil radar and spending limits without managing Nostr NIPs or Cashu NUTs directly:
+
+```typescript
+import { NostrPulseAgent } from "nostrpulse-mcp/sdk";
+
+const wallet = new NostrPulseAgent({ maxDailySats: 5000, minTrustScore: 65 });
+await wallet.deposit("cashuAeyJ0b2tlbiI6...");
+const receipt = await wallet.pay({ to: "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6", amountSats: 21, memo: "AI task settlement" });
+```
 
 ### 2. Interactive Testing via MCP Inspector
 
