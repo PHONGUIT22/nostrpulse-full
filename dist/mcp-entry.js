@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 import {
+  fetchWith402Payment
+} from "./chunk-VSTRJ2J5.js";
+import {
   payWithNWC
 } from "./chunk-ZQA6N3HW.js";
 import {
@@ -10,7 +13,7 @@ import {
   depositCashuToken,
   getAgentWalletBalance,
   withdrawOrSplitProofsForPayment
-} from "./chunk-WIJBHFDL.js";
+} from "./chunk-B7K4NR5L.js";
 import {
   DEFAULT_CASHU_MINT,
   auditCashuMint,
@@ -19,7 +22,7 @@ import {
   parseCashuToken,
   routeCashuMint,
   sendCashuNutZap
-} from "./chunk-6SAA5SH3.js";
+} from "./chunk-3W47Q4T4.js";
 import {
   MAJOR_INDEXER_RELAYS,
   decodeBolt11AmountSats
@@ -340,7 +343,7 @@ globalToolRegistry.registerTool({
     required: ["mintUrl"]
   },
   execute: async (args) => {
-    const { auditCashuMint: auditCashuMint2 } = await import("./mint-mesh-VJKAQPD6.js");
+    const { auditCashuMint: auditCashuMint2 } = await import("./mint-mesh-ALMFUJVP.js");
     return auditCashuMint2(args.mintUrl, args.forceRefresh);
   }
 });
@@ -365,7 +368,7 @@ globalToolRegistry.registerTool({
     }
   },
   execute: async (args) => {
-    const { routeCashuMint: routeCashuMint2 } = await import("./mint-mesh-VJKAQPD6.js");
+    const { routeCashuMint: routeCashuMint2 } = await import("./mint-mesh-ALMFUJVP.js");
     return routeCashuMint2({
       amountSats: args.amountSats,
       preferredMint: args.preferredMint,
@@ -452,7 +455,7 @@ globalToolRegistry.registerTool({
     properties: {}
   },
   execute: async () => {
-    const { getAgentWalletBalance: getAgentWalletBalance2 } = await import("./wallet-vault-4TXRFQ6A.js");
+    const { getAgentWalletBalance: getAgentWalletBalance2 } = await import("./wallet-vault-FBJDUBBK.js");
     return getAgentWalletBalance2();
   }
 });
@@ -470,8 +473,49 @@ globalToolRegistry.registerTool({
     required: ["cashuToken"]
   },
   execute: async (args) => {
-    const { depositCashuToken: depositCashuToken2 } = await import("./wallet-vault-4TXRFQ6A.js");
+    const { depositCashuToken: depositCashuToken2 } = await import("./wallet-vault-FBJDUBBK.js");
     return depositCashuToken2(args.cashuToken);
+  }
+});
+globalToolRegistry.registerTool({
+  name: "fetch_with_402_payment",
+  description: "Fetch a web API or resource and automatically settle Bitcoin HTTP 402 paywalls via Cashu NUT-24 (X-Cashu) or Lightning L402.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      url: {
+        type: "string",
+        description: "Target HTTP/HTTPS URL to fetch (protected by SSRF Guard)"
+      },
+      method: {
+        type: "string",
+        enum: ["GET", "POST"],
+        description: "HTTP method to use (default: GET)"
+      },
+      body: {
+        type: "string",
+        description: "Optional request body string (for POST requests)"
+      },
+      preferRail: {
+        type: "string",
+        enum: ["cashu", "l402"],
+        description: "Preferred settlement rail when both headers are offered (default: cashu)"
+      },
+      maxAutoPaySats: {
+        type: "integer",
+        description: "Optional per-request ceiling in satoshis for automatic 402 settlement"
+      }
+    },
+    required: ["url"]
+  },
+  execute: async (args) => {
+    const { fetchWith402Payment: fetchWith402Payment2 } = await import("./http402-URFMKNTR.js");
+    return fetchWith402Payment2(args.url, {
+      method: args.method,
+      body: args.body,
+      preferRail: args.preferRail,
+      maxAutoPaySats: args.maxAutoPaySats
+    });
   }
 });
 
@@ -901,7 +945,8 @@ var PROFILE_TOOLS = {
     "get_spending_guardrails",
     "get_agent_telemetry",
     "get_agent_wallet_balance",
-    "deposit_agent_wallet"
+    "deposit_agent_wallet",
+    "fetch_with_402_payment"
   ]
 };
 function resolveActiveProfile() {
@@ -1835,6 +1880,47 @@ if (isToolAllowed("deposit_agent_wallet")) {
             {
               type: "text",
               text: `Error depositing Cashu token: ${err?.message || String(err)}`
+            }
+          ],
+          isError: true
+        };
+      }
+    }
+  );
+}
+if (isToolAllowed("fetch_with_402_payment")) {
+  mcpServer.tool(
+    "fetch_with_402_payment",
+    "Fetch a web API or resource and automatically settle Bitcoin HTTP 402 paywalls via Cashu NUT-24 (X-Cashu) or Lightning L402.",
+    {
+      url: z2.string().min(1).describe("Target HTTP/HTTPS URL to fetch (protected by SSRF Guard)"),
+      method: z2.enum(["GET", "POST"]).optional().describe("HTTP method to use (default: GET)"),
+      body: z2.string().optional().describe("Optional request body string (for POST requests)"),
+      preferRail: z2.enum(["cashu", "l402"]).optional().describe("Preferred settlement rail when both headers are offered (default: cashu)"),
+      maxAutoPaySats: z2.number().int().positive().optional().describe("Optional per-request ceiling in satoshis for automatic 402 settlement")
+    },
+    async ({ url, method, body, preferRail, maxAutoPaySats }) => {
+      try {
+        const result = await fetchWith402Payment(url, {
+          method,
+          body,
+          preferRail,
+          maxAutoPaySats
+        });
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2)
+            }
+          ]
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error executing HTTP 402 fetch: ${err?.message || String(err)}`
             }
           ],
           isError: true

@@ -5,7 +5,7 @@ import {
   parseCashuToken,
   splitCashuToken,
   verifyTokenWithMint
-} from "./chunk-6SAA5SH3.js";
+} from "./chunk-3W47Q4T4.js";
 import {
   getUnspentVaultProofs,
   getVaultBalanceSummary,

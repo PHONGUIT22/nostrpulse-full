@@ -6,6 +6,7 @@
 - **Autonomous Spending Guardrails**: Mathematical spending caps (single-tx sat limit, rolling 24-hour budget allowance, and cool-down periods) preventing wallet drain from prompt injection or hallucinations.
 - **5-Pillar Anti-Sybil Web-of-Trust Radar**: Graph distance and transitive hop verification across 22 Root Anchors to prevent Sybil bot attacks before micro-settlement.
 - **Metadata-Private eCash Rails**: NIP-61 NutZap payments wrapped in NIP-59 Gift Wrap with NIP-44 encryption and timestamp jittering.
+- **Bitcoin HTTP 402 Paywall Engine**: Transparently settles HTTP `402 Payment Required` API paywalls using Cashu NUT-24 (`X-Cashu`) or Lightning `L402`, backed by SSRF and Spending Guardrails.
 - **Distributed Compute Broker**: NIP-90 Data Vending Machine (DVM) task delegation with local SLM/Ollama fallback.
 - **Standardized MCP Interface**: Stdio JSON-RPC server compatible with Claude Desktop, Cursor, LangChain, and autonomous agent loops.
 
@@ -32,6 +33,7 @@ import { NostrPulseAgent } from "nostrpulse-mcp/sdk";
 const wallet = new NostrPulseAgent({ maxDailySats: 5000, minTrustScore: 65 });
 await wallet.deposit("cashuAeyJ0b2tlbiI6...");
 const receipt = await wallet.pay({ to: "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6", amountSats: 21, memo: "AI task settlement" });
+const paidApi = await wallet.fetch402("https://api.example.com/paid-endpoint");
 ```
 
 ### Standalone TypeScript SDK (Low-Level Primitives)
@@ -57,6 +59,7 @@ import {
 - `route_cashu_mint`: Selects the most reliable Cashu mint across the dynamic mint mesh.
 - `get_spending_guardrails`: Returns active budget policies and rolling 24-hour spend allowance.
 - `get_agent_telemetry`: Exports audit trail and latency metrics for agent transactions.
+- `fetch_with_402_payment`: Fetches external HTTP/HTTPS APIs and automatically settles Bitcoin HTTP 402 paywalls (`L402` Lightning or Cashu NUT-24 `X-Cashu`) under SSRF and spending limits.
 
 ## Official Resources & Links
 - GitHub: https://github.com/PHONGUIT22/nostrpulse-full

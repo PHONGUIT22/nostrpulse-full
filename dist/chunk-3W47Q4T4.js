@@ -118,6 +118,159 @@ function bytesToBase64Url(bytes) {
   }
   return result;
 }
+var CborWriter = class {
+  constructor(initialCapacity = 256) {
+    this.buffer = new Uint8Array(initialCapacity);
+    this.offset = 0;
+  }
+  ensureCapacity(needed) {
+    if (this.offset + needed > this.buffer.length) {
+      const newCap = Math.max(this.buffer.length * 2, this.offset + needed);
+      const newBuf = new Uint8Array(newCap);
+      newBuf.set(this.buffer);
+      this.buffer = newBuf;
+    }
+  }
+  writeByte(b) {
+    this.ensureCapacity(1);
+    this.buffer[this.offset++] = b & 255;
+  }
+  writeBytes(bytes) {
+    this.ensureCapacity(bytes.length);
+    this.buffer.set(bytes, this.offset);
+    this.offset += bytes.length;
+  }
+  writeTypeAndLength(majorType, length) {
+    const major = (majorType & 7) << 5;
+    if (typeof length === "bigint") {
+      if (length <= BigInt(4294967295)) {
+        this.writeTypeAndLength(majorType, Number(length));
+        return;
+      }
+      this.writeByte(major | 27);
+      this.ensureCapacity(8);
+      const view = new DataView(this.buffer.buffer, this.buffer.byteOffset + this.offset, 8);
+      view.setBigUint64(0, length, false);
+      this.offset += 8;
+      return;
+    }
+    if (length < 24) {
+      this.writeByte(major | length);
+    } else if (length <= 255) {
+      this.writeByte(major | 24);
+      this.writeByte(length);
+    } else if (length <= 65535) {
+      this.writeByte(major | 25);
+      this.ensureCapacity(2);
+      const view = new DataView(this.buffer.buffer, this.buffer.byteOffset + this.offset, 2);
+      view.setUint16(0, length, false);
+      this.offset += 2;
+    } else if (length <= 4294967295) {
+      this.writeByte(major | 26);
+      this.ensureCapacity(4);
+      const view = new DataView(this.buffer.buffer, this.buffer.byteOffset + this.offset, 4);
+      view.setUint32(0, length, false);
+      this.offset += 4;
+    } else {
+      this.writeByte(major | 27);
+      this.ensureCapacity(8);
+      const view = new DataView(this.buffer.buffer, this.buffer.byteOffset + this.offset, 8);
+      view.setBigUint64(0, BigInt(length), false);
+      this.offset += 8;
+    }
+  }
+  writeFloat64(value) {
+    this.writeByte(7 << 5 | 27);
+    this.ensureCapacity(8);
+    const view = new DataView(this.buffer.buffer, this.buffer.byteOffset + this.offset, 8);
+    view.setFloat64(0, value, false);
+    this.offset += 8;
+  }
+  toUint8Array() {
+    return this.buffer.slice(0, this.offset);
+  }
+};
+function encodeItem(value, writer) {
+  if (value === false) {
+    writer.writeByte(7 << 5 | 20);
+    return;
+  }
+  if (value === true) {
+    writer.writeByte(7 << 5 | 21);
+    return;
+  }
+  if (value === null) {
+    writer.writeByte(7 << 5 | 22);
+    return;
+  }
+  if (value === void 0) {
+    writer.writeByte(7 << 5 | 23);
+    return;
+  }
+  if (typeof value === "number") {
+    if (Number.isInteger(value)) {
+      if (value >= 0) {
+        writer.writeTypeAndLength(0, value);
+      } else {
+        const negArg = -1 - value;
+        writer.writeTypeAndLength(1, negArg);
+      }
+    } else {
+      writer.writeFloat64(value);
+    }
+    return;
+  }
+  if (typeof value === "bigint") {
+    if (value >= BigInt(0)) {
+      writer.writeTypeAndLength(0, value);
+    } else {
+      const negArg = BigInt(-1) - value;
+      writer.writeTypeAndLength(1, negArg);
+    }
+    return;
+  }
+  if (typeof value === "string") {
+    const strBytes = new TextEncoder().encode(value);
+    writer.writeTypeAndLength(3, strBytes.length);
+    writer.writeBytes(strBytes);
+    return;
+  }
+  if (value instanceof Uint8Array) {
+    writer.writeTypeAndLength(2, value.length);
+    writer.writeBytes(value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    writer.writeTypeAndLength(4, value.length);
+    for (let i = 0; i < value.length; i++) {
+      encodeItem(value[i], writer);
+    }
+    return;
+  }
+  if (value instanceof Map) {
+    writer.writeTypeAndLength(5, value.size);
+    for (const [k, v] of value.entries()) {
+      encodeItem(k, writer);
+      encodeItem(v, writer);
+    }
+    return;
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value);
+    writer.writeTypeAndLength(5, entries.length);
+    for (let i = 0; i < entries.length; i++) {
+      encodeItem(entries[i][0], writer);
+      encodeItem(entries[i][1], writer);
+    }
+    return;
+  }
+  throw new Error(`Unsupported type for CBOR encoding: ${typeof value}`);
+}
+function encodeCbor(value) {
+  const writer = new CborWriter();
+  encodeItem(value, writer);
+  return writer.toUint8Array();
+}
 function decodeCbor(bytes) {
   if (!bytes || bytes.length === 0) {
     throw new Error("Cannot decode empty CBOR bytes");
@@ -1597,6 +1750,10 @@ async function routeCashuMint(options = {}) {
 }
 
 export {
+  base64UrlToBytes,
+  bytesToBase64Url,
+  encodeCbor,
+  decodeCbor,
   DEFAULT_MINT_MESH_URLS,
   auditCashuMint,
   selectBestMint,

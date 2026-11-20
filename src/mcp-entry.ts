@@ -58,6 +58,7 @@ import {
   logAgentEvent,
   getAgentTelemetrySummary,
 } from "./lib/telemetry";
+import { fetchWith402Payment } from "./lib/http402";
 import { decodeBolt11AmountSats } from "./lib/indexer";
 
 
@@ -107,6 +108,7 @@ export const PROFILE_TOOLS: Record<McpProfile, string[]> = {
     "get_agent_telemetry",
     "get_agent_wallet_balance",
     "deposit_agent_wallet",
+    "fetch_with_402_payment",
   ],
 };
 
@@ -1257,6 +1259,68 @@ if (isToolAllowed("deposit_agent_wallet")) {
             {
               type: "text" as const,
               text: `Error depositing Cashu token: ${err?.message || String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+}
+
+// =============================================================================
+// Tool 12: fetch_with_402_payment (HTTP 402 Paywall Engine: L402 + Cashu NUT-24)
+// =============================================================================
+if (isToolAllowed("fetch_with_402_payment")) {
+  mcpServer.tool(
+    "fetch_with_402_payment",
+    "Fetch a web API or resource and automatically settle Bitcoin HTTP 402 paywalls via Cashu NUT-24 (X-Cashu) or Lightning L402.",
+    {
+      url: z
+        .string()
+        .min(1)
+        .describe("Target HTTP/HTTPS URL to fetch (protected by SSRF Guard)"),
+      method: z
+        .enum(["GET", "POST"])
+        .optional()
+        .describe("HTTP method to use (default: GET)"),
+      body: z
+        .string()
+        .optional()
+        .describe("Optional request body string (for POST requests)"),
+      preferRail: z
+        .enum(["cashu", "l402"])
+        .optional()
+        .describe("Preferred settlement rail when both headers are offered (default: cashu)"),
+      maxAutoPaySats: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Optional per-request ceiling in satoshis for automatic 402 settlement"),
+    },
+    async ({ url, method, body, preferRail, maxAutoPaySats }) => {
+      try {
+        const result = await fetchWith402Payment(url, {
+          method,
+          body,
+          preferRail,
+          maxAutoPaySats,
+        });
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error executing HTTP 402 fetch: ${err?.message || String(err)}`,
             },
           ],
           isError: true,

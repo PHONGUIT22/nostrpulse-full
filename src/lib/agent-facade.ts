@@ -37,6 +37,11 @@ import {
 import { payWithNWC } from "./nwc";
 import { recordAgentSpending } from "./spending-guardrails";
 import { logTelemetryEvent, logAgentEvent } from "./telemetry";
+import {
+  fetchWith402Payment,
+  type Fetch402Options,
+  type Fetch402Result,
+} from "./http402";
 
 export interface AgentWalletConfig {
   /** Maximum satoshis allowed in a single transaction */
@@ -400,6 +405,18 @@ export class NostrPulseAgent {
         reason: err?.message || String(err),
       };
     }
+  }
+
+  /**
+   * Fetches an HTTP/HTTPS endpoint and automatically pays HTTP 402 Paywall challenges
+   * using Cashu NUT-24 (X-Cashu) or Lightning L402, enforcing instance spending limits.
+   */
+  public async fetch402(
+    url: string,
+    options?: Fetch402Options
+  ): Promise<Fetch402Result> {
+    await this.init();
+    return fetchWith402Payment(url, options);
   }
 }
 

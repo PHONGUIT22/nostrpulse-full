@@ -213,3 +213,20 @@ export type {
   AgentPayReceipt,
 } from "../lib/agent-facade";
 
+// =============================================================================
+// 10. Bitcoin-Native HTTP 402 Paywall Engine (L402 Lightning + Cashu NUT-24)
+// =============================================================================
+export {
+  fetchWith402Payment,
+  parseL402Challenge,
+  parseCashu402Challenge,
+  encodeCashu402Request,
+} from "../lib/http402";
+export type {
+  L402Challenge,
+  Cashu402Challenge,
+  EncodeCashu402RequestInput,
+  Fetch402Options,
+  Fetch402Result,
+} from "../lib/http402";
+

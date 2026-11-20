@@ -74,6 +74,9 @@ import { NostrPulseAgent } from "nostrpulse-mcp/sdk";
 const wallet = new NostrPulseAgent({ maxDailySats: 5000, minTrustScore: 65 });
 await wallet.deposit("cashuAeyJ0b2tlbiI6...");
 const receipt = await wallet.pay({ to: "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6", amountSats: 21, memo: "AI task settlement" });
+
+// Bitcoin-native HTTP 402 Paywall Engine (L402 Lightning + Cashu NUT-24 X-Cashu)
+const paidApi = await wallet.fetch402("https://api.example.com/paid-endpoint");
 ```
 
 ### 2. Interactive Testing via MCP Inspector
@@ -98,6 +101,7 @@ npx @modelcontextprotocol/inspector npx -y nostrpulse-mcp
 | `get_agent_identity` | **Zero-Config Identity** | Retrieve active autonomous AI agent cryptographic public identity (`pubkey`, `npub`, keystore source, ephemeral status). Automatically bootstraps local keys. |
 | `get_spending_guardrails` | **Budget Gatekeeper** | Query current AI agent spending guardrails, daily budget (500 sats rolling), 24h satoshis spent, remaining allowance, and per-tx limits (50 sats). |
 | `get_agent_telemetry` | **Telemetry & Audit** | Inspect autonomous agent spending metrics, rolling 24h budget allowance, blocked Sybil threats, and Stripe Radar-grade recent telemetry events. |
+| `fetch_with_402_payment` | **HTTP 402 Paywall** | Fetch external REST APIs and transparently settle HTTP `402 Payment Required` paywalls via Cashu NUT-24 (`X-Cashu`) or Lightning `L402` with SSRF and budget guardrails. |
 
 ### 4. Profiles for Small Language Models (SLMs: 500M – 1.5B)
 

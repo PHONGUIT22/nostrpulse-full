@@ -522,5 +522,48 @@ globalToolRegistry.registerTool({
   },
 });
 
+globalToolRegistry.registerTool({
+  name: "fetch_with_402_payment",
+  description:
+    "Fetch a web API or resource and automatically settle Bitcoin HTTP 402 paywalls via Cashu NUT-24 (X-Cashu) or Lightning L402.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      url: {
+        type: "string",
+        description: "Target HTTP/HTTPS URL to fetch (protected by SSRF Guard)",
+      },
+      method: {
+        type: "string",
+        enum: ["GET", "POST"],
+        description: "HTTP method to use (default: GET)",
+      },
+      body: {
+        type: "string",
+        description: "Optional request body string (for POST requests)",
+      },
+      preferRail: {
+        type: "string",
+        enum: ["cashu", "l402"],
+        description: "Preferred settlement rail when both headers are offered (default: cashu)",
+      },
+      maxAutoPaySats: {
+        type: "integer",
+        description: "Optional per-request ceiling in satoshis for automatic 402 settlement",
+      },
+    },
+    required: ["url"],
+  },
+  execute: async (args: Record<string, any>) => {
+    const { fetchWith402Payment } = await import("./http402");
+    return fetchWith402Payment(args.url, {
+      method: args.method,
+      body: args.body,
+      preferRail: args.preferRail,
+      maxAutoPaySats: args.maxAutoPaySats,
+    });
+  },
+});
+
 
 

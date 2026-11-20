@@ -59,6 +59,11 @@ const TEST_SUITES: TestSuite[] = [
     file: "scripts/test-unified-agent-facade.ts",
     description: "3-line NostrPulseAgent deposit, WoT verifyPeer & guarded pay",
   },
+  {
+    name: "HTTP 402 Paywall Engine (L402 + Cashu NUT-24)",
+    file: "scripts/test-http402-payments.ts",
+    description: "NUT-24 X-Cashu, L402 Lightning, Guardrails & SSRF protection",
+  },
 ];
 
 interface TestResult {

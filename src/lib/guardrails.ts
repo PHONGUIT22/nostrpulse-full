@@ -31,7 +31,7 @@ export interface SpendingPolicy {
 export interface SpendingValidationParams {
   amountSats: number;
   recipientPubkey?: string;
-  rail: "nutzap" | "nwc";
+  rail: "nutzap" | "nwc" | "l402" | "cashu_402";
 }
 
 export interface SpendingValidationResult {
@@ -112,7 +112,7 @@ export async function resolveRecipientTrustScore(recipientHex: string): Promise<
  *
  * @param params.amountSats - Intended payment amount in satoshis
  * @param params.recipientPubkey - Recipient Nostr public key (hex or npub)
- * @param params.rail - Payment rail ("nutzap" | "nwc")
+ * @param params.rail - Payment rail ("nutzap" | "nwc" | "l402" | "cashu_402")
  * @returns Promise<{ allowed: boolean; reason?: string }>
  */
 export async function assertSpendingAllowed({
