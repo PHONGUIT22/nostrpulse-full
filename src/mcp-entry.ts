@@ -158,7 +158,7 @@ export function isToolAllowed(name: string): boolean {
  */
 const mcpServer = new McpServer({
   name: "nostrpulse-mcp-server",
-  version: "1.4.0",
+  version: "1.4.1",
 });
 
 // =============================================================================

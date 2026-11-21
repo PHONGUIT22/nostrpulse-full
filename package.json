@@ -1,6 +1,6 @@
 {
   "name": "nostrpulse-mcp",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Autonomous payment & Web-of-Trust anti-Sybil layer for AI agents via Nostr & Cashu (NIP-61 NutZaps).",
   "license": "MIT",
   "repository": {
