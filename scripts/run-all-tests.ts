@@ -64,6 +64,11 @@ const TEST_SUITES: TestSuite[] = [
     file: "scripts/test-http402-payments.ts",
     description: "NUT-24 X-Cashu, L402 Lightning, Guardrails & SSRF protection",
   },
+  {
+    name: "HTTP 402 Two-Sided Full Loop (Agent Client <-> Server Paywall)",
+    file: "scripts/test-http402-full-loop.ts",
+    description: "End-to-end client fetch402 <-> withHttp402Paywall & anti-replay",
+  },
 ];
 
 interface TestResult {

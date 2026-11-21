@@ -36,6 +36,17 @@ const receipt = await wallet.pay({ to: "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j
 const paidApi = await wallet.fetch402("https://api.example.com/paid-endpoint");
 ```
 
+### 💰 Accept AI Agent Payments in Your Web App (Server-Side HTTP 402 Middleware)
+Wrap any Next.js App Router handler or Web Standard API with `withHttp402Paywall` (live endpoint: `/api/v1/paid/trust-score/[pubkey]`):
+```typescript
+import { withHttp402Paywall } from "nostrpulse-mcp/sdk";
+
+export const GET = withHttp402Paywall(
+  async (_req, _ctx, receipt) => Response.json({ ok: true, paidSats: receipt.amountSats }),
+  { amountSats: 5, description: "Premium AI API access (5 sats)" }
+);
+```
+
 ### Standalone TypeScript SDK (Low-Level Primitives)
 Install: `npm install nostrpulse-mcp`
 Import:

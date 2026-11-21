@@ -79,6 +79,19 @@ const receipt = await wallet.pay({ to: "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j
 const paidApi = await wallet.fetch402("https://api.example.com/paid-endpoint");
 ```
 
+### 💰 Accept AI Agent Payments in Your Web App (Server-Side HTTP 402 Middleware)
+
+Monetize any Next.js App Router endpoint, Hono, Cloudflare Worker, or Node.js REST API using `withHttp402Paywall` (supports Cashu NUT-24 `X-Cashu` with Fail-Closed Mint swap/anti-replay and Lightning `L402` HMAC-SHA256 macaroons). Live example route: `/api/v1/paid/trust-score/[pubkey]`:
+
+```typescript
+import { withHttp402Paywall } from "nostrpulse-mcp/sdk";
+
+export const GET = withHttp402Paywall(
+  async (_req, _ctx, receipt) => Response.json({ ok: true, paidSats: receipt.amountSats }),
+  { amountSats: 5, description: "Premium AI API access (5 sats)" }
+);
+```
+
 ### 2. Interactive Testing via MCP Inspector
 
 Verify tools, examine schemas, and test prompts in the browser via the official Model Context Protocol Inspector:

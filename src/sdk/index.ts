@@ -230,3 +230,20 @@ export type {
   Fetch402Result,
 } from "../lib/http402";
 
+// =============================================================================
+// 11. Server-Side HTTP 402 Paywall Middleware (Merchant / Web App Receiver)
+// =============================================================================
+export {
+  withHttp402Paywall,
+  verifyOrChallenge402,
+  createL402Macaroon,
+  verifyL402Credential,
+  resetServerReplayCacheForTests,
+} from "../lib/http402-server";
+export type {
+  Http402PaywallConfig,
+  ServerPaymentReceipt,
+  L402MacaroonPayload,
+  L402VerificationResult,
+} from "../lib/http402-server";
+
